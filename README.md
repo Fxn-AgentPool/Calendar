@@ -3,7 +3,9 @@
 Self-hosted calendar (Radicale/CalDAV) with a local LLM that turns forwarded
 text into calendar events. Design: [docs/DESIGN.md](docs/DESIGN.md).
 
-Status: **milestone 5**: Radicale behind Pangolin, local LLM, ingest API, agenda view, clients.
+Status: **all milestones done**: Radicale behind Pangolin, local LLM, ingest API with
+overlap check, agenda view, clients. Still to do on the real box: pick the model with the
+benchmark.
 
 ## Requirements
 
@@ -123,6 +125,10 @@ curl -s -X POST "https://ingest.<domain>/ingest?wait=60" \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"text": "Dentist moved to Tuesday 14:00", "source": "chat"}'
 ```
+
+New events that overlap something already in any of your calendars are **not added**; the
+reply names what they clash with (all-day and "free" events don't count; set
+`INGEST_ALL_DAY_CONFLICTS=true` to count all-day ones).
 
 The reply has `ok` (true if every event was added or already there), a one-line-per-event
 `summary` to show as a notification, and the details per event. Without `?wait=` (or if

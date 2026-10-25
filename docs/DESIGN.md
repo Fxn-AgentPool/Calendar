@@ -1,6 +1,6 @@
 # Calendar + LLM Ingest — Design
 
-Status: milestones 1–5 (Radicale behind Pangolin, local LLM, ingest API with the conflict stub, agenda view, clients) implemented; the real overlap check is not yet built.
+Status: all six milestones implemented (Radicale behind Pangolin, local LLM, ingest API, agenda view, clients, overlap check). The model choice still has to be confirmed with the benchmark on the real box.
 
 ## 1. Goals
 
@@ -71,7 +71,7 @@ No ports are opened on the home router. Only the internal docker network connect
   | Account  | Used by        | Rights |
   |----------|----------------|--------|
   | `<user>` | you, your apps | read/write on all of your own collections |
-  | `ingest` | ingest API     | read/write on `/<user>/personal/` only |
+  | `ingest` | ingest API     | read/write on `/<user>/personal/` only; read-only on the owner's other calendars (conflict check) |
   | `agenda` | web view       | **read-only** on all of `/<user>/` |
 
 - Calendars:
@@ -192,7 +192,12 @@ Checks the liveness of the API, the LLM and Radicale. No authentication; returns
    - Title of 1–200 characters, location of at most 200, notes of at most 2,000.
    - Failures get the outcome `invalid` and are never written.
 5. **Skip duplicates:** compute `uid = sha256(normalised title + start + end)`. If an event with that UID already exists in the calendar, the outcome is `duplicate`.
-6. **Check for overlaps (stub):** `check_conflicts(event) -> list[str]` always returns `[]` in the first version. The real version runs a CalDAV time-range query on `personal` and returns the titles of overlapping, non-transparent events. If any are found, the outcome is `conflict` and nothing is written.
+6. **Check for overlaps:** a CalDAV time-range query over **all** of the owner's calendars for the new event's time, with repeating events expanded.
+   - An event with the same UID means the outcome is `duplicate`.
+   - Any other event that shares time with the new one (back-to-back is fine) means the outcome is `conflict`: nothing is written, and the reply names the overlapping events.
+   - Events marked free (`TRANSP:TRANSPARENT`) and cancelled events never count.
+   - All-day events (new or existing: birthdays, trips, "Friday off") don't count unless `INGEST_ALL_DAY_CONFLICTS=true`.
+   - Events extracted from the same text are checked against each other too (each one is written before the next is checked).
 7. **Write:** create a `VEVENT` through CalDAV with the UID, the `llm-ingest` category and the job ID. The outcome is `added`.
 8. **Finish:** store the result. Jobs and their input text expire after 24 h.
 
@@ -339,10 +344,10 @@ scripts/
 3. Ingest API: authentication, jobs, pipeline with the conflict stub; tests.
 4. Agenda web view behind Pangolin login: agenda, week, month and detail views.
 5. Thin client integration (e.g. iOS Shortcut / Android share target) using `?wait=`.
-6. Real overlap check through a CalDAV time-range query.
+6. Real overlap check through a CalDAV time-range query. **Done.**
 
 ## 12. Open questions
 
 - Which thin client exactly? `docs/CLIENTS.md` covers iOS Shortcuts, Android (HTTP Shortcuts) and a CLI, all using `wait`; push notifications could be added later if needed.
-- Should all-day events (e.g. "Friday off") ever count as overlapping, or never?
+- ~~Should all-day events count as overlapping?~~ Decided: not by default; `INGEST_ALL_DAY_CONFLICTS=true` turns it on.
 - Should the default event duration differ by source or kind (e.g. calls 30 min, appointments 60 min)?

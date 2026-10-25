@@ -54,7 +54,7 @@ if [ -n "${INGEST_PASS:-}" ]; then
         "$(status ingest "$INGEST_PASS" PUT "$cal/$uid-ingest.ics" "$(event "$uid-ingest")")"
     expect "ingest cannot write other calendars" "403" \
         "$(status ingest "$INGEST_PASS" PUT "$base/$owner/other/$uid.ics" "$(event "$uid")")"
-    expect "ingest cannot list owner's calendars" "403" \
+    expect "ingest lists owner's calendars (conflict check)" "207" \
         "$(status ingest "$INGEST_PASS" PROPFIND "$base/$owner/")"
     expect "ingest cannot delete the calendar" "401 403" \
         "$(status ingest "$INGEST_PASS" DELETE "$cal/")"

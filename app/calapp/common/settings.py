@@ -66,6 +66,7 @@ class IngestSettings:
     max_body_bytes: int
     max_text_chars: int
     llm_timeout: int
+    all_day_conflicts: bool = False
 
     @property
     def calendar_path(self) -> str:
@@ -88,6 +89,7 @@ class IngestSettings:
             max_body_bytes=_int("MAX_BODY_BYTES", 64 * 1024),
             max_text_chars=_int("MAX_TEXT_CHARS", 20_000),
             llm_timeout=_int("LLM_TIMEOUT_SECONDS", 300),
+            all_day_conflicts=os.environ.get("INGEST_ALL_DAY_CONFLICTS", "false").lower() in ("1", "true", "yes"),
         )
 
 

@@ -29,7 +29,8 @@ permissions: rwDO
 
 # --- ingest: write events to the owner's "personal" calendar only ----------
 # Radicale cannot tell "create" from "change/delete" for events; the ingest
-# service only ever creates events (enforced in its code).
+# service only ever creates events (enforced in its code). It may read the
+# owner's other calendars to check new events for conflicts.
 
 [ingest-principal]
 user: ingest
@@ -40,6 +41,16 @@ permissions: R
 user: ingest
 collection: @OWNER@/personal
 permissions: rw
+
+[ingest-owner-principal]
+user: ingest
+collection: @OWNER@
+permissions: R
+
+[ingest-owner-calendars]
+user: ingest
+collection: @OWNER@/[^/]+
+permissions: r
 
 # --- agenda: read-only access to all of the owner's calendars --------------
 

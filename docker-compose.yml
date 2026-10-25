@@ -41,6 +41,7 @@ services:
       LLM_URL: http://llm:8080
       DEFAULT_EVENT_MINUTES: ${DEFAULT_EVENT_MINUTES:-60}
       INGEST_RATE_LIMIT_PER_HOUR: ${INGEST_RATE_LIMIT_PER_HOUR:-30}
+      INGEST_ALL_DAY_CONFLICTS: ${INGEST_ALL_DAY_CONFLICTS:-false}
     volumes:
       - ingest-data:/data
     # For a Newt running directly on the host. A Newt container on the

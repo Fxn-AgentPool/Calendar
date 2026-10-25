@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import icalendar
 
 from calapp.common.caldav import CalDAVClient, CalDAVError
+from calapp.common.events import expand
 from calapp.ingest import textprep
 from calapp.ingest.llm import LLMClient, LLMError
 from calapp.ingest.models import EventResult, IngestRequest
@@ -204,6 +205,8 @@ class Pipeline:
         default_minutes: int = 60,
         max_text_chars: int = 20_000,
         llm_retry_delays: tuple[float, ...] = (10, 30, 60),
+        principal_path: str | None = None,
+        all_day_conflicts: bool = False,
     ):
         self.llm = llm
         self.calendar = calendar
@@ -212,13 +215,40 @@ class Pipeline:
         self.default_minutes = default_minutes
         self.max_text_chars = max_text_chars
         self.llm_retry_delays = llm_retry_delays
+        # Calendars of this principal are checked for conflicts; None = only calendar_path.
+        self.principal_path = principal_path
+        self.all_day_conflicts = all_day_conflicts
+
+    def _calendars_to_check(self) -> list[str]:
+        if not self.principal_path:
+            return [self.calendar_path]
+        paths = [c.path for c in self.calendar.list_calendars(self.principal_path)]
+        return paths if self.calendar_path in paths else [self.calendar_path, *paths]
 
     def find_conflicts(self, event: Event) -> tuple[bool, list[str]]:
         """Returns (exact duplicate already stored, titles of overlapping events).
 
-        Stub until milestone 6: never reports anything.
+        An event overlaps when it shares any time with the new one (back-to-back
+        is fine). Events marked free (TRANSP:TRANSPARENT) never count. All-day
+        events, new or existing, only count if ``all_day_conflicts`` is set.
         """
-        return False, []
+        start, end = event.range(self.user_tz)
+        duplicate = False
+        titles: list[str] = []
+        for path in self._calendars_to_check():
+            objects = self.calendar.query(path, start, end)
+            for occ in expand(objects, start, end, self.user_tz):
+                if occ.uid == event.uid:
+                    duplicate = True
+                    continue
+                if occ.transparent:
+                    continue
+                if (occ.all_day or event.all_day) and not self.all_day_conflicts:
+                    continue
+                occ_start, occ_end = occ.range(self.user_tz)
+                if occ_start < end and start < occ_end and occ.title not in titles:
+                    titles.append(occ.title)
+        return duplicate, titles
 
     def _extract(self, text: str, reference: datetime, tz_name: str, source: str | None) -> list[dict]:
         # Retry while the LLM is restarting or still loading the model.

@@ -120,6 +120,7 @@ def create_app(
     pipeline = pipeline or Pipeline(
         llm, calendar, settings.calendar_path, caldav.timezone,
         default_minutes=settings.default_event_minutes, max_text_chars=settings.max_text_chars,
+        principal_path=caldav.principal_path, all_day_conflicts=settings.all_day_conflicts,
     )
     store = JobStore(Path(settings.data_dir) / "jobs.sqlite3")
     limiter = RateLimiter(settings.rate_limit_per_hour)
