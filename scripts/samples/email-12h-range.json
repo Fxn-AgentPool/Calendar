@@ -1,0 +1,16 @@
+{
+  "source": "email",
+  "received_at": "2026-11-10T09:00:00+01:00",
+  "timezone": "Europe/Berlin",
+  "text": "Reminder: the webinar runs on November 19 from 3:30pm to 5pm. Join via the link in your invitation.",
+  "expected": [
+    {
+      "title_any": [
+        "webinar"
+      ],
+      "start": "2026-11-19T15:30",
+      "end": "2026-11-19T17:00",
+      "all_day": false
+    }
+  ]
+}

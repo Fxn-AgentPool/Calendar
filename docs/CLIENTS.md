@@ -102,3 +102,77 @@ It waits for the result (and keeps polling if needed) and prints the summary. Ex
 Any tool that can send an HTTP POST works (Tasker, n8n, Home Assistant, a mail filter
 piping into `calsend.py`, …). Keep the API key out of logs and shared configs; if it
 leaks, create a new one with `scripts/new_api_key.sh` and update `.env`.
+
+## Desktop review helper (API ready, client not built yet)
+
+Events the checker is unsure about are added marked `(?)` and queued (see
+`docs/DESIGN.md` §8). A helper on the desktop can re-check them with a bigger model when
+its GPU is idle. The server side is ready; the helper program itself
+(`clients/review_helper.py`) is not written yet. This is the contract it will use.
+
+**Enable it** on the server: create a key with `scripts/new_api_key.sh`, put the hash in
+`.env` as `HELPER_API_KEY_HASH=…`, and run `docker compose up -d ingest`. Without it, the
+endpoints below answer `404`. The helper key is separate from the ingest key; neither
+works for the other's endpoints.
+
+All requests: `Authorization: Bearer <helper key>`, base URL `https://ingest.<domain>`.
+
+### `GET /reviews/next?wait=30`
+
+Hands out the oldest open item and reserves it for 10 minutes (`REVIEW_LEASE_MINUTES`).
+`wait` (0–60 s) keeps the request open until an item arrives. With nothing to do, the
+reply is `204 No Content`.
+
+```json
+{
+  "id": "Xc3…",
+  "messages": [
+    {"role": "system", "content": "You check calendar events extracted from text. …"},
+    {"role": "user", "content": "Today: … Day table: … <text>…</text> … Extracted event: {…}"}
+  ],
+  "schema": {"type": "object", "properties": {"event": {…}}, "required": ["event"]}
+}
+```
+
+The helper sends `messages` unchanged to its local llama.cpp server, with the schema as
+the response format and thinking off:
+
+```json
+POST http://127.0.0.1:8080/v1/chat/completions
+{"messages": <messages>, "temperature": 0, "max_tokens": 1024,
+ "response_format": {"type": "json_schema", "json_schema": {"name": "review", "schema": <schema>}}}
+```
+
+### `POST /reviews/<id>/result`
+
+Body: the model's JSON answer as is, `{"event": {"title": …, "all_day": …, "start": …,
+"end": …, "timezone": …, "location": …, "notes": …}}`. Reply:
+
+```json
+{"outcome": "corrected", "detail": "Tue 27 Oct 14:00–14:45 -> Thu 29 Oct 14:00–14:45"}
+```
+
+| `outcome` | Meaning |
+|-----------|---------|
+| `confirmed` | Same time as before; `(?)` removed, event marked checked. |
+| `corrected` | Different time, no conflict; the event was moved (same UID) and marked checked. |
+| `kept` | The corrected time conflicts with another event; the event stays uncertain, with the suggestion in its notes. |
+| `skipped` | The event was deleted or changed by you meanwhile; nothing touched. |
+| `failed` | The answer was not a valid event; the event stays uncertain. |
+
+Other status codes: `404` unknown or expired item, `409` item not reserved (already
+finished, or never handed out), `503` calendar unreachable (retry later; the reservation
+runs out after 10 minutes and the item is handed out again).
+
+### `GET /reviews/stats`
+
+Counts per state, e.g. `{"pending": 2, "confirmed": 5, "corrected": 1}`.
+
+### What the helper program will do (planned)
+
+- Run as a systemd user service on the Ubuntu desktop.
+- Only ask for work when the GPU is idle: `nvidia-smi` shows low utilisation for a few
+  minutes and enough free VRAM, and the local llama.cpp server answers. Rendering always
+  wins; it never starts or stops other GPU work.
+- Use whatever bigger model the local llama.cpp server runs (for 16 GB VRAM e.g. a Qwen3
+  14B or Gemma 3 12B quantization), with thinking disabled.

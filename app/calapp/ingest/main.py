@@ -10,21 +10,24 @@ import collections
 import contextlib
 import hashlib
 import hmac
+import json
 import logging
 import time
 from datetime import timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from calapp.common.caldav import CalDAVClient
 from calapp.common.settings import IngestSettings
+from calapp.ingest.checker import Checker
 from calapp.ingest.jobs import JobStore
 from calapp.ingest.llm import LLMClient, LLMError
 from calapp.ingest.models import IngestRequest, JobResult
 from calapp.ingest.pipeline import Pipeline, summarize
+from calapp.ingest.reviews import ReviewQueue, apply_result, task_for
 
 log = logging.getLogger("calapp.ingest")
 
@@ -117,14 +120,22 @@ def create_app(
     llm = llm or LLMClient(settings.llm_url, timeout=settings.llm_timeout)
     caldav = settings.caldav
     calendar = calendar or CalDAVClient(caldav.url, caldav.user, caldav.password)
+    if pipeline is not None and pipeline.reviews is not None:
+        reviews = pipeline.reviews
+    else:
+        reviews = ReviewQueue(Path(settings.data_dir) / "reviews.sqlite3",
+                              lease=timedelta(minutes=settings.review_lease_minutes))
     pipeline = pipeline or Pipeline(
         llm, calendar, settings.calendar_path, caldav.timezone,
         default_minutes=settings.default_event_minutes, max_text_chars=settings.max_text_chars,
         principal_path=caldav.principal_path, all_day_conflicts=settings.all_day_conflicts,
+        checker=Checker(settings.checker_url) if settings.checker_url else None,
+        check_threshold=settings.check_threshold, reviews=reviews,
     )
     store = JobStore(Path(settings.data_dir) / "jobs.sqlite3")
     limiter = RateLimiter(settings.rate_limit_per_hour)
     expected_hash = bytes.fromhex(settings.api_key_hash)
+    helper_hash = bytes.fromhex(settings.helper_key_hash) if settings.helper_key_hash else None
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -138,6 +149,9 @@ def create_app(
                 removed = store.expire(timedelta(hours=settings.job_ttl_hours))
                 if removed:
                     log.info("expired %d old jobs", removed)
+                removed = reviews.expire(timedelta(days=settings.review_ttl_days))
+                if removed:
+                    log.info("expired %d old review items", removed)
                 await asyncio.sleep(600)
 
         tasks = [asyncio.create_task(worker.run()), asyncio.create_task(expire_loop())]
@@ -147,13 +161,21 @@ def create_app(
 
     app = FastAPI(title="calendar ingest", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
-    async def require_key(request: Request) -> None:
+    async def check_bearer(request: Request, wanted: bytes) -> None:
         header = request.headers.get("authorization", "")
         scheme, _, key = header.partition(" ")
         given = hashlib.sha256(key.strip().encode()).digest()
-        if scheme.lower() != "bearer" or not hmac.compare_digest(given, expected_hash):
+        if scheme.lower() != "bearer" or not hmac.compare_digest(given, wanted):
             await asyncio.sleep(1)  # slows down guessing
             raise HTTPException(401, "invalid or missing API key", headers={"WWW-Authenticate": "Bearer"})
+
+    async def require_key(request: Request) -> None:
+        await check_bearer(request, expected_hash)
+
+    async def require_helper_key(request: Request) -> None:
+        if helper_hash is None:
+            raise HTTPException(404)  # review endpoints are off without a helper key
+        await check_bearer(request, helper_hash)
 
     @app.post("/ingest", dependencies=[Depends(require_key)])
     async def ingest(request: Request, wait: int = Query(0, ge=0, le=MAX_WAIT_SECONDS)):
@@ -197,13 +219,51 @@ def create_app(
             raise HTTPException(404, "unknown or expired job")
         return job
 
+    @app.get("/reviews/next", dependencies=[Depends(require_helper_key)])
+    async def next_review(wait: int = Query(0, ge=0, le=60)):
+        """Hand out the oldest uncertain event to re-check (204 if there is none)."""
+        deadline = time.monotonic() + wait
+        while True:
+            item = await asyncio.to_thread(reviews.claim)
+            if item is not None:
+                return task_for(item)
+            if time.monotonic() >= deadline:
+                return Response(status_code=204)
+            await asyncio.sleep(1)
+
+    @app.post("/reviews/{review_id}/result", dependencies=[Depends(require_helper_key)])
+    async def review_result(review_id: str, request: Request):
+        body = await request.body()
+        if len(body) > settings.max_body_bytes:
+            raise HTTPException(413, "request too large")
+        item = reviews.get(review_id)
+        if item is None:
+            raise HTTPException(404, "unknown or expired review")
+        if item.status != "claimed":
+            raise HTTPException(409, "review is not claimed (finished or not handed out)")
+        try:
+            answer = json.loads(body)
+        except json.JSONDecodeError:
+            raise HTTPException(422, "body is not JSON") from None
+        try:
+            outcome, detail = await asyncio.to_thread(apply_result, pipeline, item, answer)
+        except RuntimeError as e:
+            log.warning("review %s: %s", review_id, e)
+            raise HTTPException(503, "calendar unreachable, try again later") from None
+        reviews.finish(review_id, outcome, detail)
+        log.info("review %s (job %s): %s %s", review_id, item.job_id, outcome, detail)
+        return {"outcome": outcome, "detail": detail}
+
+    @app.get("/reviews/stats", dependencies=[Depends(require_helper_key)])
+    async def review_stats():
+        return reviews.counts()
+
     @app.get("/healthz")
     async def healthz():
-        llm_ok, cal_ok = await asyncio.gather(
-            asyncio.to_thread(llm.healthy),
-            asyncio.to_thread(calendar.ping, settings.calendar_path),
-        )
-        ok = llm_ok and cal_ok
+        checks = [asyncio.to_thread(llm.healthy), asyncio.to_thread(calendar.ping, settings.calendar_path)]
+        if pipeline.checker is not None:
+            checks.append(asyncio.to_thread(pipeline.checker.healthy))
+        ok = all(await asyncio.gather(*checks))
         return JSONResponse({"status": "ok" if ok else "degraded"}, status_code=200 if ok else 503)
 
     return app

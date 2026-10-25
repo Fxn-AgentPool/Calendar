@@ -3,9 +3,9 @@
 Self-hosted calendar (Radicale/CalDAV) with a local LLM that turns forwarded
 text into calendar events. Design: [docs/DESIGN.md](docs/DESIGN.md).
 
-Status: **all milestones done**: Radicale behind Pangolin, local LLM, ingest API with
-overlap check, agenda view, clients. Still to do on the real box: pick the model with the
-benchmark.
+Status: **milestone 7**: Radicale behind Pangolin, local LLM (Qwen3 4B), ingest API with
+overlap check and confidence check (Kev-4B), review queue, agenda view, clients. The desktop
+review helper program is not built yet (its server API is ready).
 
 ## Requirements
 
@@ -87,7 +87,8 @@ all-day events, another time zone, an injection attempt) through the same prompt
 schema the ingest service uses and compares the result with the expected events. It
 exits with 0 only if every event was found and nothing extra was invented.
 
-**Choosing a model.** Try a second one and compare:
+**Choosing a model.** Qwen3 4B was clearly best on the 12-text test set (13/14 vs. 7/14 for
+Qwen2.5 7B and 6/14 for Llama 3.2 3B; `docs/DESIGN.md` §8.5). To compare another one:
 
 ```sh
 scripts/download_model.sh qwen2.5-7b     # or llama3.2-3b, or any https URL to a .gguf
@@ -103,6 +104,7 @@ of the `.json` files) for the kinds of text you send most.
 | Llama 3.2 3B   | ~2.0 GB   | ~3 GB |
 | Qwen3 4B       | ~2.5 GB   | ~3.5 GB |
 | Qwen2.5 7B     | ~4.7 GB   | ~6 GB |
+| Kev-4B (checker) | ~3.0 GB | ~3 GB |
 
 Settings in `.env`: `LLM_THREADS` (number of physical cores, default 6) and
 `LLM_CTX_SIZE` (default 8192 tokens; enough for ~20,000 characters of input).
@@ -144,6 +146,25 @@ Tests (run against a real Radicale using this repo's config):
 ```sh
 cd app && python3 -m venv .venv && .venv/bin/pip install -e '.[dev]' && .venv/bin/pytest
 ```
+
+## Confidence check and review queue
+
+A second small model, [Kev-4B](https://huggingface.co/jaredpalmer/kev-4b), checks every
+extracted event: it is asked which of several candidate times the text means, and the
+probability of the extracted one is the confidence. Below `CHECK_THRESHOLD` (0.5) the
+event is still added, but as `(?) Title`, tentative, with a note, and it goes into a
+review queue for the desktop helper. The reply says `Added (uncertain, will be
+re-checked): …`. Details and measurements: `docs/DESIGN.md` §8.
+
+```sh
+scripts/download_model.sh kev-4b      # ~3 GB
+docker compose up -d checker ingest
+```
+
+The review queue is served to a desktop helper (`HELPER_API_KEY_HASH` in `.env`); the API
+is described in [docs/CLIENTS.md](docs/CLIENTS.md#desktop-review-helper-api-ready-client-not-built-yet).
+The helper program itself is still to be written. Set `CHECKER_URL=` (empty) in `.env` to
+turn the check off.
 
 ## Agenda view
 

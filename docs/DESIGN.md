@@ -1,6 +1,6 @@
 # Calendar + LLM Ingest — Design
 
-Status: all six milestones implemented (Radicale behind Pangolin, local LLM, ingest API, agenda view, clients, overlap check). The model choice still has to be confirmed with the benchmark on the real box.
+Status: milestones 1–6 implemented; milestone 7 (confidence check and review queue, §8) in progress. Model choice: Qwen3 4B for extraction, Kev-4B as checker (§8.5).
 
 ## 1. Goals
 
@@ -83,7 +83,7 @@ No ports are opened on the home router. Only the internal docker network connect
 ## 4. LLM (llama.cpp, CPU only)
 
 - Runtime: `llama-server` from llama.cpp (OpenAI-compatible HTTP API), official image pinned to `server-b11804`. It supports **JSON-schema-constrained output**, so the model can only produce output that matches the schema in §6.
-- Model: a 3–8B instruct model at 4-bit quantization (`Q4_K_M` GGUF), roughly 3–6 GB of RAM. Default: Qwen3 4B Instruct (2507). Alternatives in `scripts/download_model.sh`: Qwen2.5 7B, Llama 3.2 3B. The final choice is made with `scripts/bench_llm.py` on the real box.
+- Model: a 3–8B instruct model at 4-bit quantization (`Q4_K_M` GGUF), roughly 3–6 GB of RAM. Default: Qwen3 4B Instruct (2507). Alternatives in `scripts/download_model.sh`: Qwen2.5 7B, Llama 3.2 3B. The final choice is made with `scripts/bench_llm.py` on the real box (results in §8.5).
 - Expected speed on this CPU (to be measured):
   - Reading the input: about 30–60 tokens/s with a 7–8B model.
   - Writing the answer: about 5–8 tokens/s with a 7–8B model.
@@ -274,7 +274,61 @@ A small read-only web page for checking the calendar from any browser. It replac
 - Cancelled events (`STATUS:CANCELLED`) are not shown; events spanning several days appear on each day.
 - If Radicale is unreachable, the page shows a clear error message instead of an empty calendar.
 
-## 8. Security model
+## 8. Confidence check and review queue
+
+The extraction model is usually right (13 of 14 events on the test set), but a wrong date is silent. So every event is added right away, the doubtful ones are marked, and the desktop gives a second opinion when its GPU is idle. Everything that can run on the server does; the desktop is optional.
+
+### 8.1 Checker (Kev-4B)
+
+- [Kev-4B](https://huggingface.co/jaredpalmer/kev-4b) is a *decision model* (Apache-2.0; a LoRA adapter and a pointer head on Qwen3.5-4B-Base). It does not generate text: it reads a document and typed questions (yes/no, multiple choice, rating) and returns calibrated probabilities in one forward pass. It is the open counterpart of TypeSafe's Jev. It is unrelated to JEPA.
+- It runs in the same pinned llama.cpp image (`/v1/systemone` endpoint, GGUF from `ggml-org/Kev-4B-GGUF`) as a separate `checker` container, only on the internal `calendar-llm` network.
+- For each valid extracted event, one multiple-choice question: *"When does '<title>' start, according to the message?"* The options are the extracted start and near misses (±1 day and +1 hour for timed events; −1, +1 and +2 days for all-day events), in a shuffled order. The document is the reference date, the same day table the extraction prompt uses, and the cleaned text. **Confidence = the probability of the extracted option.**
+- Below `CHECK_THRESHOLD` (default 0.5) the event is *uncertain*. If the checker cannot be reached, events are treated as uncertain (fail-safe) and a warning is logged. With `CHECKER_URL` empty the check is off.
+
+### 8.2 Uncertain events
+
+- They are still written immediately (unless they conflict), and marked:
+  - title prefixed with `(?) ` and `STATUS:TENTATIVE`, so every calendar app shows it;
+  - `X-INGEST-STATUS:UNCERTAIN` and `X-INGEST-CONFIDENCE:<p>`;
+  - a description line "Uncertain (confidence 0.20), will be re-checked".
+- The reply marks the event `uncertain` with its `confidence`; the summary line reads `Added (uncertain, will be re-checked): …`. `ok` stays true (the event was added).
+- A review item is queued (SQLite `reviews` table): the cleaned text, reference date, time zone, source, and the event as written. Items are kept until resolved, at most `REVIEW_TTL_DAYS` (7); after that the event simply stays marked uncertain.
+
+### 8.3 Desktop helper
+
+- The server never connects to the desktop (it sits behind the home router and is often asleep or busy). The helper connects out: `GET /reviews/next?wait=30` on `ingest.<domain>`, with its own key (`HELPER_API_KEY_HASH`, separate from the ingest key). With no helper key configured, the review endpoints are off.
+- `clients/review_helper.py` (stdlib only; systemd user service on Ubuntu) asks for work **only when the GPU is idle**: utilisation below a threshold for several minutes and enough free VRAM (from `nvidia-smi`), and its local llama.cpp server answers. Rendering always wins.
+- The server hands out the item together with ready-made chat `messages` and the JSON `schema` (a review prompt: "here is the text and the event a small model extracted from it; return the correct event"). The helper posts them unchanged to its local llama.cpp server, using whatever bigger model is loaded there (e.g. Qwen3 14B or Gemma 3 12B on 16 GB VRAM), and sends the answer to `POST /reviews/<id>/result`.
+- A claimed item goes back to the queue if no result arrives within `REVIEW_LEASE_MINUTES` (10).
+- Applying a result (server side):
+
+  | Situation | Action |
+  |-----------|--------|
+  | The event was deleted, or changed by you since it was written (title, start or end differ, or the uncertain marker is gone) | Leave it alone. |
+  | The helper agrees (same start and end) | Confirm: drop `(?) `, `STATUS:CONFIRMED`, remove the marker, note "Checked by desktop model". |
+  | The helper gives a different time that conflicts with nothing | Correct the event in place (same UID), confirmed, note "Corrected by desktop model (was …)". |
+  | The corrected time conflicts with another event | Keep the event uncertain; add "Desktop check suggests …; not applied because it conflicts with …". |
+  | The helper's answer is invalid | Keep the event uncertain; mark the item failed. |
+
+- This is the only place the ingest service changes an existing event: only events it created itself, only while they are still marked uncertain and unchanged, and only with `If-Match` on the ETag it just read (so a concurrent edit wins).
+
+### 8.4 Agenda view
+
+- Uncertain events show a `?` badge; the detail page shows the confidence and whether the event was checked or corrected.
+
+### 8.5 Measurements (test set of 12 texts, 14 events; 4-core CPU sandbox)
+
+| Model | Role | Correct | Invented | Injection sample | Median s/text | RAM |
+|-------|------|---------|----------|------------------|---------------|-----|
+| Qwen3 4B Instruct 2507 | extraction (default) | 13/14 (the miss: right dates, title "Vacation" instead of "Vienna") | 1 (same) | resisted | 18 | 3.6 GB |
+| Qwen2.5 7B Instruct | extraction | 7/14 | 16 | 10 fake events | 31 | 7.4 GB |
+| Llama 3.2 3B Instruct | extraction | 6/14 | 7 | 1 fake event | 12 | 4.7 GB |
+| Kev-4B | checker | picked the right option 14/14; AUROC 0.97–0.98 for correct vs. near-miss | – | – | ~8 | ~3 GB |
+| Kev-0.8B | checker | 11/14; confidence carried no signal | – | – | ~2.5 | ~1 GB |
+
+The prompt was tuned while testing Qwen3 4B, which favours it somewhat; the gaps are too large to be explained by that alone. Kev is officially English-only; the German samples worked in this test.
+
+## 9. Security model
 
 | Threat | Mitigation |
 |--------|-----------|
@@ -287,9 +341,10 @@ A small read-only web page for checking the calendar from any browser. It replac
 | LLM exposure | `llm` service only on the internal docker network |
 | Large or malicious payloads | body size limit, text length cap, HTML stripped, no attachments processed |
 | Data leakage | TLS ends on the user's own VPS (no third-party proxy); input text deleted after 24 h; secrets in a `.env` file that is not committed |
+| Misuse of the review endpoints | separate helper key (hash only), off unless configured; the helper only returns an event, which goes through the same validation and conflict check; changes only the ingest service's own uncertain, unchanged events, with `If-Match` |
 | Container escape / lateral movement | non-root containers, read-only root filesystem where possible, no Docker socket mounts |
 
-## 9. Deployment
+## 10. Deployment
 
 - `docker-compose.yml` with `radicale`, `ingest`, `web` and `llm` on an internal network. `newt` joins this network or runs on the host.
 - `ingest` and `web` are built from the same Python image with different start commands, so the CalDAV code is shared. Each gets only its own credentials.
@@ -307,7 +362,7 @@ A small read-only web page for checking the calendar from any browser. It replac
   - `DEFAULT_EVENT_MINUTES`
 - Model files sit in a volume (`./models`), downloaded once by a helper script.
 
-## 10. Repository layout (planned)
+## 11. Repository layout (planned)
 
 ```
 docs/DESIGN.md
@@ -337,7 +392,7 @@ scripts/
   samples/             # sample inputs: poll, chat, whatsapp, email
 ```
 
-## 11. Milestones
+## 12. Milestones
 
 1. Compose skeleton: Radicale working through Pangolin with a phone syncing.
 2. `llm` service plus `bench_llm.py`; pick the model.
@@ -345,8 +400,9 @@ scripts/
 4. Agenda web view behind Pangolin login: agenda, week, month and detail views.
 5. Thin client integration (e.g. iOS Shortcut / Android share target) using `?wait=`.
 6. Real overlap check through a CalDAV time-range query. **Done.**
+7. Confidence check with Kev-4B, uncertain events marked and queued, desktop review helper (§8).
 
-## 12. Open questions
+## 13. Open questions
 
 - Which thin client exactly? `docs/CLIENTS.md` covers iOS Shortcuts, Android (HTTP Shortcuts) and a CLI, all using `wait`; push notifications could be added later if needed.
 - ~~Should all-day events count as overlapping?~~ Decided: not by default; `INGEST_ALL_DAY_CONFLICTS=true` turns it on.

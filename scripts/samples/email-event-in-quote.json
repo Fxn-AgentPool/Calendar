@@ -1,0 +1,18 @@
+{
+  "source": "email",
+  "received_at": "2026-10-28T08:00:00+01:00",
+  "timezone": "Europe/Berlin",
+  "text": "Sounds good, see you then!\n\nOn Tue, 27 Oct 2026, Sarah wrote:\n> Coffee on Friday at 10 at Café Einstein?",
+  "expected": [
+    {
+      "title_any": [
+        "coffee",
+        "sarah",
+        "kaffee"
+      ],
+      "start": "2026-10-30T10:00",
+      "end": null,
+      "all_day": false
+    }
+  ]
+}

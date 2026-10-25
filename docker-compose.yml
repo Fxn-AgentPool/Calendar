@@ -42,6 +42,10 @@ services:
       DEFAULT_EVENT_MINUTES: ${DEFAULT_EVENT_MINUTES:-60}
       INGEST_RATE_LIMIT_PER_HOUR: ${INGEST_RATE_LIMIT_PER_HOUR:-30}
       INGEST_ALL_DAY_CONFLICTS: ${INGEST_ALL_DAY_CONFLICTS:-false}
+      # Confidence check (Kev-4B) and review queue; see docs/DESIGN.md §8.
+      CHECKER_URL: ${CHECKER_URL-http://checker:8080}
+      CHECK_THRESHOLD: ${CHECK_THRESHOLD:-0.5}
+      HELPER_API_KEY_HASH: ${HELPER_API_KEY_HASH:-}
     volumes:
       - ingest-data:/data
     # For a Newt running directly on the host. A Newt container on the
@@ -54,6 +58,7 @@ services:
     depends_on:
       - radicale
       - llm
+      - checker
     read_only: true
     tmpfs:
       - /tmp
@@ -144,6 +149,43 @@ services:
       resources:
         limits:
           memory: 10g
+
+  # Confidence checker: Kev-4B decision model on the same llama.cpp image
+  # (/v1/systemone). Internal only, like the llm service.
+  checker:
+    image: ghcr.io/ggml-org/llama.cpp:server-b11804
+    restart: unless-stopped
+    command:
+      - --model
+      - /models/${CHECKER_MODEL_FILE:-Kev-4B-Q4_K_M.gguf}
+      - --threads
+      - ${LLM_THREADS:-6}
+      - --ctx-size
+      - "8192"
+      - --parallel
+      - "1"
+      - --cache-ram
+      - "512"
+      - --no-webui
+      - --no-slots
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "127.0.0.1:8082:8080"
+    networks:
+      - llm
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 6g
 
   # Pangolin site connector. Only needed if Newt does not already run on this
   # box: start with `docker compose --profile newt up -d`.

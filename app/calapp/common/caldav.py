@@ -78,6 +78,29 @@ class CalDAVClient:
             return False
         raise CalDAVError(f"PUT {path} failed: HTTP {resp.status_code}")
 
+    def get(self, path: str) -> tuple[icalendar.Calendar, str] | None:
+        """One stored object and its ETag, or None if it doesn't exist."""
+        resp = self._request("GET", path)
+        if resp.status_code == 404:
+            return None
+        if resp.status_code != 200:
+            raise CalDAVError(f"GET {path} failed: HTTP {resp.status_code}")
+        return icalendar.Calendar.from_ical(resp.content), resp.headers.get("etag", "")
+
+    def update(self, path: str, ical: bytes, etag: str) -> bool:
+        """Replace an object only if it still has ``etag``. False if it changed meanwhile."""
+        resp = self._request(
+            "PUT",
+            path,
+            content=ical,
+            headers={"Content-Type": "text/calendar; charset=utf-8", "If-Match": etag},
+        )
+        if resp.status_code in (200, 201, 204):
+            return True
+        if resp.status_code == 412:
+            return False
+        raise CalDAVError(f"PUT {path} failed: HTTP {resp.status_code}")
+
     def query(self, calendar_path: str, start: datetime, end: datetime) -> list[CalendarObject]:
         """Objects with a VEVENT overlapping [start, end) (recurring ones included)."""
         body = f"""<?xml version="1.0" encoding="utf-8"?>

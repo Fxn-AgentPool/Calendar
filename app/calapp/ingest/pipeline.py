@@ -7,6 +7,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -15,8 +16,12 @@ import icalendar
 from calapp.common.caldav import CalDAVClient, CalDAVError
 from calapp.common.events import expand
 from calapp.ingest import textprep
+from calapp.ingest.checker import Checker, CheckerError
 from calapp.ingest.llm import LLMClient, LLMError
 from calapp.ingest.models import EventResult, IngestRequest
+
+if TYPE_CHECKING:
+    from calapp.ingest.reviews import ReviewQueue
 
 log = logging.getLogger("calapp.ingest")
 
@@ -140,22 +145,50 @@ def normalize(raw: dict, *, reference: datetime, user_tz: ZoneInfo, default_minu
     return event
 
 
-def to_ical(event: Event, job_id: str) -> bytes:
+UNCERTAIN_PREFIX = "(?) "
+
+
+def to_ical(
+    event: Event,
+    job_id: str,
+    *,
+    uid: str | None = None,
+    confidence: float | None = None,
+    checked: bool = False,
+    note: str | None = None,
+) -> bytes:
+    """iCalendar for one event.
+
+    ``confidence`` set marks the event uncertain (title prefix, TENTATIVE).
+    ``checked`` marks it confirmed after a review; ``note`` is appended to the
+    description.
+    """
     cal = icalendar.Calendar()
     cal.add("prodid", "-//calapp//ingest//EN")
     cal.add("version", "2.0")
     vevent = icalendar.Event()
-    vevent.add("uid", event.uid)
+    vevent.add("uid", uid or event.uid)
     vevent.add("dtstamp", datetime.now(timezone.utc))
-    vevent.add("summary", event.title)
+    vevent.add("summary", (UNCERTAIN_PREFIX if confidence is not None else "") + event.title)
     vevent.add("dtstart", event.start)
     vevent.add("dtend", event.end)
     if event.all_day:
         vevent.add("transp", "TRANSPARENT")
     if event.location:
         vevent.add("location", event.location)
-    description = f"{event.notes}\n\n" if event.notes else ""
-    vevent.add("description", f"{description}Added from text by calendar ingest (job {job_id}).")
+    lines = [event.notes] if event.notes else []
+    if confidence is not None:
+        lines.append(f"Uncertain (confidence {confidence:.2f}), will be re-checked.")
+        vevent.add("status", "TENTATIVE")
+        vevent.add("x-ingest-status", "UNCERTAIN")
+        vevent.add("x-ingest-confidence", f"{confidence:.2f}")
+    elif checked:
+        vevent.add("status", "CONFIRMED")
+        vevent.add("x-ingest-status", "CHECKED")
+    if note:
+        lines.append(note)
+    lines.append(f"Added from text by calendar ingest (job {job_id}).")
+    vevent.add("description", "\n\n".join(lines))
     vevent.add("categories", [CATEGORY])
     vevent.add("x-ingest-job", job_id)
     cal.add_component(vevent)
@@ -181,7 +214,9 @@ def summarize(results: list[EventResult], tz: ZoneInfo) -> str:
     lines = []
     for r in results:
         when = describe(r.start, r.end, r.all_day, tz) if r.start and r.end else ""
-        if r.outcome == "added":
+        if r.outcome == "added" and r.uncertain:
+            lines.append(f"Added (uncertain, will be re-checked): {r.title}, {when}")
+        elif r.outcome == "added":
             lines.append(f"Added: {r.title}, {when}")
         elif r.outcome == "duplicate":
             lines.append(f"Already in calendar: {r.title}, {when}")
@@ -207,6 +242,9 @@ class Pipeline:
         llm_retry_delays: tuple[float, ...] = (10, 30, 60),
         principal_path: str | None = None,
         all_day_conflicts: bool = False,
+        checker: Checker | None = None,
+        check_threshold: float = 0.5,
+        reviews: ReviewQueue | None = None,
     ):
         self.llm = llm
         self.calendar = calendar
@@ -218,6 +256,10 @@ class Pipeline:
         # Calendars of this principal are checked for conflicts; None = only calendar_path.
         self.principal_path = principal_path
         self.all_day_conflicts = all_day_conflicts
+        # Confidence check (None: off) and where uncertain events are queued.
+        self.checker = checker
+        self.check_threshold = check_threshold
+        self.reviews = reviews
 
     def _calendars_to_check(self) -> list[str]:
         if not self.principal_path:
@@ -225,7 +267,7 @@ class Pipeline:
         paths = [c.path for c in self.calendar.list_calendars(self.principal_path)]
         return paths if self.calendar_path in paths else [self.calendar_path, *paths]
 
-    def find_conflicts(self, event: Event) -> tuple[bool, list[str]]:
+    def find_conflicts(self, event: Event, ignore_uid: str | None = None) -> tuple[bool, list[str]]:
         """Returns (exact duplicate already stored, titles of overlapping events).
 
         An event overlaps when it shares any time with the new one (back-to-back
@@ -238,6 +280,8 @@ class Pipeline:
         for path in self._calendars_to_check():
             objects = self.calendar.query(path, start, end)
             for occ in expand(objects, start, end, self.user_tz):
+                if ignore_uid and occ.uid == ignore_uid:
+                    continue
                 if occ.uid == event.uid:
                     duplicate = True
                     continue
@@ -249,6 +293,17 @@ class Pipeline:
                 if occ_start < end and start < occ_end and occ.title not in titles:
                     titles.append(occ.title)
         return duplicate, titles
+
+    def _check(self, text: str, reference: datetime, event: Event, result: EventResult) -> None:
+        """Fill in result.confidence / result.uncertain (no-op without a checker)."""
+        if self.checker is None:
+            return
+        try:
+            result.confidence = round(self.checker.confidence(text, reference, event.title, event.start), 3)
+        except CheckerError as e:
+            log.warning("confidence check failed, treating event as uncertain: %s", e)
+            result.confidence = 0.0
+        result.uncertain = result.confidence < self.check_threshold
 
     def _extract(self, text: str, reference: datetime, tz_name: str, source: str | None) -> list[dict]:
         # Retry while the LLM is restarting or still loading the model.
@@ -292,8 +347,17 @@ class Pipeline:
                 elif conflicts:
                     result.outcome = "conflict"
                     result.conflicts_with = conflicts
-                elif not self.calendar.create(self.calendar_path, event.uid, to_ical(event, job_id)):
-                    result.outcome = "duplicate"
+                else:
+                    self._check(text, reference, event, result)
+                    confidence = result.confidence if result.uncertain else None
+                    ical = to_ical(event, job_id, confidence=confidence)
+                    if not self.calendar.create(self.calendar_path, event.uid, ical):
+                        result.outcome = "duplicate"
+                    elif result.uncertain and self.reviews is not None:
+                        self.reviews.add(
+                            job_id=job_id, text=text, reference=reference, timezone=str(tz),
+                            source=request.source, raw=raw, event=event, confidence=result.confidence,
+                        )
             except CalDAVError as e:
                 log.warning("job %s: calendar error: %s", job_id, e)
                 result.outcome = "error"

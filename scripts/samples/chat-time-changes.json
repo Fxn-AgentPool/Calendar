@@ -1,0 +1,17 @@
+{
+  "source": "chat",
+  "received_at": "2026-12-01T12:00:00+01:00",
+  "timezone": "Europe/Berlin",
+  "text": "A: dinner Saturday at 6?\nB: 6 is tight for me, 7?\nA: ok 7 then, at Luigi's",
+  "expected": [
+    {
+      "title_any": [
+        "dinner",
+        "luigi"
+      ],
+      "start": "2026-12-05T19:00",
+      "end": null,
+      "all_day": false
+    }
+  ]
+}

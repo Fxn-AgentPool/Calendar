@@ -30,6 +30,8 @@ class Occurrence:
     location: str | None
     description: str | None
     ingest_job: str | None
+    # Ingest review state: "UNCERTAIN", "CHECKED" or None (see docs/DESIGN.md §8).
+    ingest_status: str | None = None
     calendar: str = ""  # display name
     calendar_index: int = 0
 
@@ -93,6 +95,7 @@ def expand(objects: list[CalendarObject], start: datetime, end: datetime, tz: Zo
                 location=_text(comp, "location"),
                 description=_text(comp, "description"),
                 ingest_job=str(job) if job is not None else None,
+                ingest_status=str(comp["x-ingest-status"]).upper() if comp.get("x-ingest-status") else None,
             ))
     result.sort(key=lambda o: (o.range(tz)[0], not o.all_day, o.title.casefold()))
     return result

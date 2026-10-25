@@ -41,6 +41,9 @@ class EventResult(BaseModel):
     uid: str | None = None
     conflicts_with: list[str] | None = None
     reason: str | None = None
+    # Set when the confidence check ran: the probability that the time is right.
+    confidence: float | None = None
+    uncertain: bool = False
 
 
 JobStatus = Literal["pending", "running", "done", "failed"]

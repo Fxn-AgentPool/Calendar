@@ -230,3 +230,35 @@ class LLMClient:
             completion_tokens=usage.get("completion_tokens"),
             seconds=seconds,
         )
+
+
+# --- Review (second opinion by a bigger model on the desktop) --------------
+
+REVIEW_SCHEMA: dict = {
+    "type": "object",
+    "properties": {"event": EXTRACTION_SCHEMA["properties"]["events"]["items"]},
+    "required": ["event"],
+    "additionalProperties": False,
+}
+
+REVIEW_INSTRUCTIONS = """\
+A small model extracted the calendar event below from the text, but it is \
+unsure about it. Check it carefully against the text and return the correct \
+event: fix the date, time, end, time zone, title or location where the text \
+says otherwise, and keep what is right. Return exactly one event, the one \
+that was meant; do not add others.
+"""
+
+
+def build_review_messages(
+    text: str, reference: datetime, timezone: str, source: str | None, event: dict
+) -> list[dict]:
+    """Messages for a review: the extraction rules, the text and the event to check."""
+    messages = build_messages(text, reference, timezone, source)
+    messages[0]["content"] = SYSTEM_PROMPT.replace(
+        "You extract calendar events from text.", "You check calendar events extracted from text."
+    )
+    messages[1]["content"] += (
+        f"\n\n{REVIEW_INSTRUCTIONS}\nExtracted event:\n{json.dumps(event, ensure_ascii=False)}"
+    )
+    return messages

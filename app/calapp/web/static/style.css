@@ -58,6 +58,7 @@ header nav a[aria-current="page"] { background: var(--soft); color: var(--fg); f
   font-size: .7em; padding: 0 6px; border-radius: 8px;
   border: 1px solid var(--line); color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
 }
+.badge.uncertain { color: #b45309; border-color: #f59e0b; font-weight: 700; }
 .none { color: var(--muted); margin: 4px 0; }
 
 /* Agenda */

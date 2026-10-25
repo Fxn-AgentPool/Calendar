@@ -25,6 +25,22 @@ def _int(name: str, default: int) -> int:
         raise ConfigError(f"{name} must be an integer") from e
 
 
+def _float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError as e:
+        raise ConfigError(f"{name} must be a number") from e
+
+
+def _hash_or_none(name: str) -> str | None:
+    value = (os.environ.get(name) or "").strip().lower()
+    if not value:
+        return None
+    if len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
+        raise ConfigError(f"{name} must be a SHA-256 hex digest (64 characters)")
+    return value
+
+
 @dataclass(frozen=True)
 class CalDAVSettings:
     url: str
@@ -67,6 +83,12 @@ class IngestSettings:
     max_text_chars: int
     llm_timeout: int
     all_day_conflicts: bool = False
+    # Confidence check and review queue (docs/DESIGN.md §8).
+    checker_url: str | None = None
+    check_threshold: float = 0.5
+    helper_key_hash: str | None = None
+    review_ttl_days: int = 7
+    review_lease_minutes: int = 10
 
     @property
     def calendar_path(self) -> str:
@@ -90,6 +112,11 @@ class IngestSettings:
             max_text_chars=_int("MAX_TEXT_CHARS", 20_000),
             llm_timeout=_int("LLM_TIMEOUT_SECONDS", 300),
             all_day_conflicts=os.environ.get("INGEST_ALL_DAY_CONFLICTS", "false").lower() in ("1", "true", "yes"),
+            checker_url=os.environ.get("CHECKER_URL") or None,
+            check_threshold=_float("CHECK_THRESHOLD", 0.5),
+            helper_key_hash=_hash_or_none("HELPER_API_KEY_HASH"),
+            review_ttl_days=_int("REVIEW_TTL_DAYS", 7),
+            review_lease_minutes=_int("REVIEW_LEASE_MINUTES", 10),
         )
 
 

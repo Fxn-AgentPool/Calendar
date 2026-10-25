@@ -1,0 +1,17 @@
+{
+  "source": "chat",
+  "received_at": "2026-10-28T21:10:00+01:00",
+  "timezone": "Europe/Berlin",
+  "text": "Mike: still on for climbing tomorrow?\nMe: yes! half past 7 pm at Boulderwelt",
+  "expected": [
+    {
+      "title_any": [
+        "climb",
+        "boulder"
+      ],
+      "start": "2026-10-29T19:30",
+      "end": null,
+      "all_day": false
+    }
+  ]
+}

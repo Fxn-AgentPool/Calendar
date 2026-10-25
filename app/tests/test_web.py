@@ -26,6 +26,8 @@ EVENTS = {
     "standup": "DTSTART;TZID=Europe/Berlin:20261020T090000\r\nDTEND;TZID=Europe/Berlin:20261020T091500\r\n"
                "RRULE:FREQ=WEEKLY;BYDAY=MO,WE\r\nSUMMARY:Standup\r\n",
     "trip": "DTSTART;VALUE=DATE:20261029\r\nDTEND;VALUE=DATE:20261101\r\nSUMMARY:Vienna trip\r\n",
+    "unsure": "DTSTART;TZID=Europe/Berlin:20261103T100000\r\nDTEND;TZID=Europe/Berlin:20261103T110000\r\n"
+              "SUMMARY:(?) Call Anna\r\nSTATUS:TENTATIVE\r\nX-INGEST-STATUS:UNCERTAIN\r\nX-INGEST-JOB:job7\r\n",
     "night": "DTSTART:20261030T210000Z\r\nDTEND:20261031T010000Z\r\nSUMMARY:Night shift\r\n",
     "evil": "DTSTART:20261028T100000Z\r\nDTEND:20261028T110000Z\r\n"
             "SUMMARY:<script>alert(1)</script>\r\nDESCRIPTION:<img src=x onerror=alert(1)>\r\n",
@@ -174,3 +176,10 @@ def test_cache_avoids_repeated_queries(radicale, owner_calendar):
     app.get("/")
     app.get("/")
     assert Counting.queries == 1
+
+
+def test_uncertain_events_have_a_badge(web):
+    page = web.get("/").text
+    assert 'class="badge uncertain"' in page and "(?) Call Anna" in page
+    detail = web.get("/event", params={"day": "2026-11-03", "uid": "unsure"}).text
+    assert "queued for a re-check" in detail

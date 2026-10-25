@@ -3,6 +3,7 @@
 #
 #   scripts/download_model.sh                # default: qwen3-4b
 #   scripts/download_model.sh qwen2.5-7b
+#   scripts/download_model.sh kev-4b          # the confidence checker
 #   scripts/download_model.sh https://huggingface.co/.../model-Q4_K_M.gguf
 #
 # Then set LLM_MODEL_FILE in .env to the printed file name and run
@@ -25,11 +26,15 @@ case "$choice" in
         # ~2.0 GB. Fastest of the three.
         url=https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf
         ;;
+    kev-4b)
+        # ~3.0 GB. Confidence checker (decision model), not an extraction model.
+        url=https://huggingface.co/ggml-org/Kev-4B-GGUF/resolve/main/Kev-4B-Q4_K_M.gguf
+        ;;
     https://*)
         url=$choice
         ;;
     *)
-        echo "usage: $0 [qwen3-4b | qwen2.5-7b | llama3.2-3b | <https url to a .gguf>]" >&2
+        echo "usage: $0 [qwen3-4b | qwen2.5-7b | llama3.2-3b | kev-4b | <https url to a .gguf>]" >&2
         exit 2
         ;;
 esac
@@ -53,4 +58,7 @@ fi
 echo "sha256: $(sha256sum "models/$file" | cut -d' ' -f1)"
 echo
 echo "Set this in .env:"
-echo "LLM_MODEL_FILE=$file"
+case "$file" in
+    Kev-*) echo "CHECKER_MODEL_FILE=$file" ;;
+    *) echo "LLM_MODEL_FILE=$file" ;;
+esac
