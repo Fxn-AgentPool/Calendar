@@ -3,7 +3,7 @@
 Self-hosted calendar (Radicale/CalDAV) with a local LLM that turns forwarded
 text into calendar events. Design: [docs/DESIGN.md](docs/DESIGN.md).
 
-Status: **milestone 4**: Radicale behind Pangolin, local LLM, ingest API, agenda view.
+Status: **milestone 5**: Radicale behind Pangolin, local LLM, ingest API, agenda view, clients.
 
 ## Requirements
 
@@ -129,6 +129,10 @@ The reply has `ok` (true if every event was added or already there), a one-line-
 the wait runs out) the reply is `202` with a `job_id`; fetch the result from
 `GET /jobs/<job_id>` with the same key. Full API description: `docs/DESIGN.md` §5.
 
+**Clients:** an iPhone Shortcut and an Android share action (send selected text from any
+app and get a notification with the result), plus `clients/calsend.py` for the command
+line: see [docs/CLIENTS.md](docs/CLIENTS.md).
+
 Tests (run against a real Radicale using this repo's config):
 
 ```sh
@@ -181,6 +185,7 @@ delete calendars and import/export `.ics` files. It has no calendar view.
 | `docker-compose.yml` | services (Radicale, ingest API, agenda view, LLM; optional Newt) |
 | `radicale/` | image, config, rights template, entrypoint |
 | `app/` | Python code (`calapp/ingest/`: API, pipeline, prompt; `calapp/web/`: agenda view) and tests |
+| `clients/` | `calsend.py` command-line client ([docs/CLIENTS.md](docs/CLIENTS.md)) |
 | `scripts/` | account, smoke test, backup, model download and benchmark helpers |
 | `models/` | downloaded model files, not committed |
 | `secrets/` | password hashes (`radicale-users`), not committed |

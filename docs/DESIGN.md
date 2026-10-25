@@ -1,6 +1,6 @@
 # Calendar + LLM Ingest — Design
 
-Status: milestones 1–4 (Radicale behind Pangolin, local LLM, ingest API with the conflict stub, agenda view) implemented; the rest is not yet built.
+Status: milestones 1–5 (Radicale behind Pangolin, local LLM, ingest API with the conflict stub, agenda view, clients) implemented; the real overlap check is not yet built.
 
 ## 1. Goals
 
@@ -343,6 +343,6 @@ scripts/
 
 ## 12. Open questions
 
-- Which thin client exactly? This decides whether `wait` is enough or whether push notifications are wanted later.
+- Which thin client exactly? `docs/CLIENTS.md` covers iOS Shortcuts, Android (HTTP Shortcuts) and a CLI, all using `wait`; push notifications could be added later if needed.
 - Should all-day events (e.g. "Friday off") ever count as overlapping, or never?
 - Should the default event duration differ by source or kind (e.g. calls 30 min, appointments 60 min)?
