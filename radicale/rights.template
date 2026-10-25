@@ -1,0 +1,59 @@
+# Radicale rights (type = from_file). entrypoint.sh replaces @OWNER@ with
+# $CAL_USER. Rules are checked top to bottom; the first match wins, and a
+# request that matches no rule gets no access.
+#
+# Permission letters:
+#   R  read the principal collection (lists calendars)
+#   W  write the principal collection (create calendars)
+#   r  read a calendar and its events
+#   w  write events in a calendar (create, change, delete)
+#   D  delete a whole calendar      O  overwrite a whole calendar
+
+# Any logged-in account may read the root (needed for discovery).
+[root]
+user: .+
+collection:
+permissions: R
+
+# --- Owner: full access to their own calendars -----------------------------
+
+[owner-principal]
+user: @OWNER@
+collection: @OWNER@
+permissions: RW
+
+[owner-calendars]
+user: @OWNER@
+collection: @OWNER@/[^/]+
+permissions: rwDO
+
+# --- ingest: write events to the owner's "personal" calendar only ----------
+# Radicale cannot tell "create" from "change/delete" for events; the ingest
+# service only ever creates events (enforced in its code).
+
+[ingest-principal]
+user: ingest
+collection: ingest
+permissions: R
+
+[ingest-personal]
+user: ingest
+collection: @OWNER@/personal
+permissions: rw
+
+# --- agenda: read-only access to all of the owner's calendars --------------
+
+[agenda-principal]
+user: agenda
+collection: agenda
+permissions: R
+
+[agenda-owner-principal]
+user: agenda
+collection: @OWNER@
+permissions: R
+
+[agenda-owner-calendars]
+user: agenda
+collection: @OWNER@/[^/]+
+permissions: r

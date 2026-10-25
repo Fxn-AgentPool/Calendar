@@ -1,0 +1,7 @@
+.env
+secrets/
+backups/
+models/
+__pycache__/
+*.pyc
+.venv/

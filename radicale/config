@@ -1,0 +1,47 @@
+# Radicale configuration. See https://radicale.org/v3.html#configuration
+
+[server]
+# Only reachable on the docker network (and 127.0.0.1 on the host, see
+# docker-compose.yml). TLS is terminated by Pangolin on the VPS.
+hosts = 0.0.0.0:5232
+max_connections = 20
+# 10 MB is plenty for calendar data and limits abuse.
+max_content_length = 10000000
+max_resource_size = 8000000
+timeout = 30
+
+[auth]
+type = htpasswd
+htpasswd_filename = /etc/radicale/users
+htpasswd_encryption = bcrypt
+# Seconds to wait after a failed login; slows down password guessing.
+delay = 2
+realm = Calendar
+
+[rights]
+type = from_file
+# Rendered from rights.template by entrypoint.sh.
+file = /tmp/rights
+# Collections (whole calendars) can only be deleted or overwritten by rules
+# that grant D/O explicitly, i.e. by the owner.
+permit_delete_collection = False
+permit_overwrite_collection = False
+
+[storage]
+filesystem_folder = /var/lib/radicale/collections
+# Created on the owner's first login.
+predefined_collections = {
+    "personal": {
+        "tag": "VCALENDAR",
+        "D:displayname": "Personal",
+        "C:supported-calendar-component-set": "VEVENT,VTODO"
+    }
+  }
+
+[web]
+# Built-in page for managing calendars (no calendar view), at /.web/
+type = internal
+
+[logging]
+level = info
+mask_passwords = True

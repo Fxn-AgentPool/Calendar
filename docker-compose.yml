@@ -1,0 +1,46 @@
+name: calendar
+
+services:
+  radicale:
+    build: ./radicale
+    image: calendar-radicale:local
+    restart: unless-stopped
+    environment:
+      CAL_USER: ${CAL_USER:?set CAL_USER in .env}
+    volumes:
+      - radicale-data:/var/lib/radicale/collections
+      - ./secrets/radicale-users:/etc/radicale/users:ro
+    # Only on localhost, for a Newt running directly on the host and for
+    # local checks. A Newt container on the "calendar" network uses radicale:5232.
+    ports:
+      - "127.0.0.1:5232:5232"
+    networks:
+      - calendar
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # Pangolin site connector. Only needed if Newt does not already run on this
+  # box: start with `docker compose --profile newt up -d`.
+  newt:
+    image: fosrl/newt:latest
+    profiles:
+      - newt
+    restart: unless-stopped
+    environment:
+      PANGOLIN_ENDPOINT: ${PANGOLIN_ENDPOINT:-}
+      NEWT_ID: ${NEWT_ID:-}
+      NEWT_SECRET: ${NEWT_SECRET:-}
+    networks:
+      - calendar
+
+volumes:
+  radicale-data:
+
+networks:
+  calendar:
+    name: calendar

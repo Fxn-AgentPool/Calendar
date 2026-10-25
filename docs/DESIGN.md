@@ -1,6 +1,6 @@
 # Calendar + LLM Ingest — Design
 
-Status: draft, nothing implemented yet.
+Status: milestone 1 (Radicale behind Pangolin) implemented; the rest is not yet built.
 
 ## 1. Goals
 
@@ -312,7 +312,7 @@ A small read-only web page for checking the calendar from any browser. It replac
 docs/DESIGN.md
 docker-compose.yml
 .env.example
-radicale/config, radicale/rights
+radicale/              # Dockerfile, config, rights.template, entrypoint.sh
 app/                   # one Python package, one Docker image
   pyproject.toml
   Dockerfile
@@ -327,6 +327,9 @@ app/                   # one Python package, one Docker image
   calapp/web/static/style.css
   tests/                     # pipeline and view tests with a fake LLM and a fake CalDAV
 scripts/
+  radicale-passwd.sh   # create/replace Radicale accounts (bcrypt)
+  smoke_test.sh        # checks logins and per-account permissions
+  backup.sh            # dated tar.gz of the calendar data
   download_model.sh
   bench_llm.py         # measures speed and extraction quality on sample texts
   samples/             # sample inputs: poll, chat, whatsapp, email
