@@ -24,6 +24,47 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # Local LLM (llama.cpp server). Never exposed through Pangolin: it is only
+  # on the "llm" network (shared with the ingest service) and on 127.0.0.1
+  # for scripts/bench_llm.py.
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server-b11804
+    restart: unless-stopped
+    # llama-server does not accept "--flag=value"; flag and value are separate.
+    command:
+      - --model
+      - /models/${LLM_MODEL_FILE:?set LLM_MODEL_FILE in .env}
+      - --threads
+      - ${LLM_THREADS:-6}
+      - --ctx-size
+      - ${LLM_CTX_SIZE:-8192}
+      # One request at a time; the ingest service queues jobs.
+      - --parallel
+      - "1"
+      # Prompt cache in RAM (MiB). The default of 8 GiB is too much for this box.
+      - --cache-ram
+      - "1024"
+      - --no-webui
+      - --no-slots
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - llm
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 10g
+
   # Pangolin site connector. Only needed if Newt does not already run on this
   # box: start with `docker compose --profile newt up -d`.
   newt:
@@ -44,3 +85,5 @@ volumes:
 networks:
   calendar:
     name: calendar
+  llm:
+    name: calendar-llm

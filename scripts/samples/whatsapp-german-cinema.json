@@ -1,0 +1,20 @@
+{
+  "source": "whatsapp",
+  "received_at": "2026-11-02T18:40:00+01:00",
+  "timezone": "Europe/Berlin",
+  "text": "[02.11.26, 18:31] Anna: Hast du Donnerstag Zeit? Kino um 20 Uhr?\n[02.11.26, 18:35] Ich: Donnerstag geht, aber lieber 20:30\n[02.11.26, 18:38] Anna: Ok 20:30 im Delphi, der Film geht 2 Stunden",
+  "expected": [
+    {
+      "title_any": [
+        "kino",
+        "film",
+        "anna",
+        "delphi",
+        "cinema"
+      ],
+      "start": "2026-11-05T20:30",
+      "end": "2026-11-05T22:30",
+      "all_day": false
+    }
+  ]
+}

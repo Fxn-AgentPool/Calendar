@@ -1,0 +1,17 @@
+{
+  "source": "poll",
+  "received_at": "2026-10-25T10:00:00+01:00",
+  "timezone": "Europe/Berlin",
+  "text": "Poll closed: \"Quarterly planning\"\nWinning option: Wed 11 Nov 2026, 10:00-11:30 (Room 3B)\n8 of 9 participants available.",
+  "expected": [
+    {
+      "title_any": [
+        "planning",
+        "quarterly"
+      ],
+      "start": "2026-11-11T10:00",
+      "end": "2026-11-11T11:30",
+      "all_day": false
+    }
+  ]
+}

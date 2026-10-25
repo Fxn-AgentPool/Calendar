@@ -3,7 +3,7 @@
 Self-hosted calendar (Radicale/CalDAV) with a local LLM that turns forwarded
 text into calendar events. Design: [docs/DESIGN.md](docs/DESIGN.md).
 
-Status: **milestone 1**, Radicale behind Pangolin.
+Status: **milestone 2**: Radicale behind Pangolin, local LLM with benchmark.
 
 ## Requirements
 
@@ -67,6 +67,44 @@ OWNER_PASS=... scripts/smoke_test.sh https://cal.<domain>
 Recommended on the VPS: enable CrowdSec (the Pangolin installer offers it), so
 repeated failed logins get banned.
 
+## LLM
+
+The llama.cpp server runs CPU-only and is never exposed through Pangolin
+(it is reachable only from the ingest service and on `127.0.0.1:8080`).
+
+```sh
+scripts/download_model.sh            # default: Qwen3 4B Instruct, Q4_K_M (~2.5 GB)
+# set LLM_MODEL_FILE in .env to the printed file name
+docker compose up -d llm
+docker compose ps llm                # wait for "healthy" (loading takes ~10-30 s)
+python3 scripts/bench_llm.py -v      # speed + extraction quality on scripts/samples/
+```
+
+The benchmark runs every sample in `scripts/samples/` (email, WhatsApp, a resolved poll,
+all-day events, another time zone, an injection attempt) through the same prompt and
+schema the ingest service uses and compares the result with the expected events. It
+exits with 0 only if every event was found and nothing extra was invented.
+
+**Choosing a model.** Try a second one and compare:
+
+```sh
+scripts/download_model.sh qwen2.5-7b     # or llama3.2-3b, or any https URL to a .gguf
+# change LLM_MODEL_FILE in .env
+docker compose up -d llm && python3 scripts/bench_llm.py --repeat 3
+```
+
+Prefer the smallest model that gets all samples right; add your own samples (copy one
+of the `.json` files) for the kinds of text you send most.
+
+| Model (Q4_K_M) | File size | RAM in use (8k context) |
+|----------------|-----------|-------------------------|
+| Llama 3.2 3B   | ~2.0 GB   | ~3 GB |
+| Qwen3 4B       | ~2.5 GB   | ~3.5 GB |
+| Qwen2.5 7B     | ~4.7 GB   | ~6 GB |
+
+Settings in `.env`: `LLM_THREADS` (number of physical cores, default 6) and
+`LLM_CTX_SIZE` (default 8192 tokens; enough for ~20,000 characters of input).
+
 ## Connecting devices
 
 | Client | How |
@@ -91,8 +129,10 @@ delete calendars and import/export `.ics` files. It has no calendar view.
 
 | Path | What |
 |------|------|
-| `docker-compose.yml` | services (Radicale; optional Newt) |
+| `docker-compose.yml` | services (Radicale, LLM; optional Newt) |
 | `radicale/` | image, config, rights template, entrypoint |
-| `scripts/` | account, smoke test and backup helpers |
+| `app/calapp/` | Python code; `ingest/llm.py` holds the extraction prompt and schema |
+| `scripts/` | account, smoke test, backup, model download and benchmark helpers |
+| `models/` | downloaded model files, not committed |
 | `secrets/` | password hashes (`radicale-users`), not committed |
 | `.env` | your settings, not committed |

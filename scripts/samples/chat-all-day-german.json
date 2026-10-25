@@ -1,0 +1,28 @@
+{
+  "source": "chat",
+  "received_at": "2026-03-16T08:30:00+01:00",
+  "timezone": "Europe/Berlin",
+  "text": "Kurze Info: Ich hab am Freitag Urlaub, und vom 23. bis 27. März bin ich in Wien.",
+  "expected": [
+    {
+      "title_any": [
+        "urlaub",
+        "frei",
+        "off",
+        "vacation"
+      ],
+      "start": "2026-03-20",
+      "end": null,
+      "all_day": true
+    },
+    {
+      "title_any": [
+        "wien",
+        "vienna"
+      ],
+      "start": "2026-03-23",
+      "end": "2026-03-27",
+      "all_day": true
+    }
+  ]
+}

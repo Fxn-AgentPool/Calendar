@@ -1,0 +1,19 @@
+{
+  "source": "email",
+  "received_at": "2026-10-23T09:12:00+02:00",
+  "timezone": "Europe/Berlin",
+  "text": "Subject: Your appointment has been rescheduled\n\nDear patient,\n\nyour appointment with Dr. Weber has been moved to Tuesday, 27 October at 14:00. Please plan about 45 minutes.\n\nKind regards\nPraxis Dr. Weber\nHauptstr. 5, Berlin\n\n> On 20 Oct 2026, you wrote:\n> Can we move my appointment on Monday?",
+  "expected": [
+    {
+      "title_any": [
+        "dentist",
+        "weber",
+        "appointment",
+        "doctor"
+      ],
+      "start": "2026-10-27T14:00",
+      "end": "2026-10-27T14:45",
+      "all_day": false
+    }
+  ]
+}

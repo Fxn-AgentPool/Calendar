@@ -1,0 +1,28 @@
+{
+  "source": "email",
+  "received_at": "2026-11-20T16:05:00+01:00",
+  "timezone": "Europe/Berlin",
+  "text": "Dear parents,\n\nplease note two dates before the holidays: the parent-teacher evening takes place on Thursday 10 December from 18:00 to 19:00 in the school hall, and the Christmas concert is on Friday 18 December at 17:00.\n\nBest wishes,\nMs. Krause",
+  "expected": [
+    {
+      "title_any": [
+        "parent",
+        "teacher",
+        "eltern"
+      ],
+      "start": "2026-12-10T18:00",
+      "end": "2026-12-10T19:00",
+      "all_day": false
+    },
+    {
+      "title_any": [
+        "concert",
+        "christmas",
+        "konzert"
+      ],
+      "start": "2026-12-18T17:00",
+      "end": null,
+      "all_day": false
+    }
+  ]
+}
