@@ -1,7 +1,8 @@
 secrets/*
 !secrets/*.example
 backups/
-models/
+models/*
+!models/.gitkeep
 __pycache__/
 *.pyc
 .venv/

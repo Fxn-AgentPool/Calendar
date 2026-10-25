@@ -46,6 +46,12 @@ case "$file" in
 esac
 
 mkdir -p models
+if [ ! -w models ]; then
+    # Happens when `docker compose up` ran first: Docker creates missing
+    # mount folders as root.
+    echo "models/ is not writable for $(id -un). Fix with: sudo chown -R \"\$USER\": models" >&2
+    exit 1
+fi
 if [ -f "models/$file" ]; then
     echo "models/$file already exists"
 else
