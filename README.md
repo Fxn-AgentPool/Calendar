@@ -16,11 +16,12 @@ review helper program is not built yet (its server API is ready).
 
 ```sh
 git clone https://github.com/Fxn-AgentPool/Calendar.git && cd Calendar
-cp .env.example .env        # set CAL_USER (your username) and USER_TIMEZONE
+cp secrets/common.env.example secrets/common.env   # set CAL_USER (your username) and USER_TIMEZONE
 docker compose build
 
-# Create the three accounts. Each prints a random password once:
-# store them in your password manager.
+# Create the three accounts. Yours prints a random password once (store it in
+# your password manager); the service accounts' passwords go straight into
+# secrets/ingest.env and secrets/web.env.
 scripts/radicale-passwd.sh <your CAL_USER>
 scripts/radicale-passwd.sh ingest
 scripts/radicale-passwd.sh agenda
@@ -30,8 +31,22 @@ docker compose up -d
 docker compose ps           # should show "healthy" after ~30 s
 ```
 
-The `ingest` and `agenda` accounts are for later milestones; creating them
-now lets the check below test all permissions.
+**Configuration** is split in two:
+
+- `.env` (committed): ports, model files and other non-secret settings. Change them there.
+- `secrets/*.env` (not committed): your username, passwords and key hashes, one file per
+  service (`common.env`, `ingest.env`, `web.env`, `newt.env`), so each service only sees
+  its own. The scripts fill them in; templates are the `*.example` files next to them.
+
+| Port (`.env`) | Service | Default |
+|---------------|---------|---------|
+| `RADICALE_PORT` | CalDAV (Radicale) | 5232 |
+| `INGEST_PORT` | ingest API | 8000 |
+| `AGENDA_PORT` | agenda view | 8001 |
+| `LLM_PORT` | llama.cpp, extraction (local only) | 8080 |
+| `CHECKER_PORT` | llama.cpp, Kev-4B checker (local only) | 8082 |
+
+All are bound to `BIND_ADDRESS` (default `127.0.0.1`, this machine only).
 
 Check that logins and permissions work as designed:
 
@@ -58,7 +73,7 @@ In the Pangolin dashboard, add a resource:
 - If Newt already runs in its own container, connect it:
   `docker network connect calendar <newt container>`.
 - Or let this project run Newt: put `PANGOLIN_ENDPOINT`, `NEWT_ID` and
-  `NEWT_SECRET` in `.env` and start with `docker compose --profile newt up -d`.
+  `NEWT_SECRET` in `secrets/newt.env` and start with `docker compose --profile newt up -d`.
 
 Then run the check through the tunnel:
 
@@ -112,12 +127,11 @@ Settings in `.env`: `LLM_THREADS` (number of physical cores, default 6) and
 ## Ingest API
 
 ```sh
-scripts/new_api_key.sh     # prints a key for your client and INGEST_API_KEY_HASH for .env
-# in .env: INGEST_CALDAV_PASSWORD (the "ingest" account's password), INGEST_API_KEY_HASH
+scripts/new_api_key.sh     # prints a key for your client; its hash goes to secrets/ingest.env
 docker compose up -d --build ingest
 ```
 
-Pangolin: add an HTTP resource `ingest` → `ingest:8000` (or `127.0.0.1:8000` for Newt on
+Pangolin: add an HTTP resource `ingest` → `ingest:8000` (or `127.0.0.1:INGEST_PORT` for Newt on
 the host), authentication **off**: the API checks its own key.
 
 Send text:
@@ -161,7 +175,7 @@ scripts/download_model.sh kev-4b      # ~3 GB
 docker compose up -d checker ingest
 ```
 
-The review queue is served to a desktop helper (`HELPER_API_KEY_HASH` in `.env`); the API
+The review queue is served to a desktop helper (key: `scripts/new_api_key.sh helper`); the API
 is described in [docs/CLIENTS.md](docs/CLIENTS.md#desktop-review-helper-api-ready-client-not-built-yet).
 The helper program itself is still to be written. Set `CHECKER_URL=` (empty) in `.env` to
 turn the check off.
@@ -171,17 +185,16 @@ turn the check off.
 A read-only agenda, week and month view at `agenda.<domain>`.
 
 ```sh
-# in .env: AGENDA_CALDAV_PASSWORD (the "agenda" account's password)
-docker compose up -d --build web
+docker compose up -d --build web     # password from scripts/radicale-passwd.sh agenda
 ```
 
-Pangolin: add an HTTP resource `agenda` → `web:8000` (or `127.0.0.1:8001` for Newt on the
+Pangolin: add an HTTP resource `agenda` → `web:8000` (or `127.0.0.1:AGENDA_PORT` for Newt on the
 host) with authentication **on** (SSO or password). This is the one hostname used only
 from a browser, so Pangolin's login works here.
 
 Optional second login inside the app (username = `CAL_USER`):
 `docker compose run --rm --no-deps web python -m calapp.web.hashpw`, then put the printed
-`AGENDA_PASSWORD_HASH=…` in `.env` and `docker compose up -d web`.
+`AGENDA_PASSWORD_HASH=…` in `secrets/web.env` and `docker compose up -d web`.
 
 Events added by the ingest service carry an "auto" badge; the detail page shows the job ID.
 
@@ -215,5 +228,5 @@ delete calendars and import/export `.ics` files. It has no calendar view.
 | `clients/` | `calsend.py` command-line client ([docs/CLIENTS.md](docs/CLIENTS.md)) |
 | `scripts/` | account, smoke test, backup, model download and benchmark helpers |
 | `models/` | downloaded model files, not committed |
-| `secrets/` | password hashes (`radicale-users`), not committed |
-| `.env` | your settings, not committed |
+| `.env` | ports and non-secret settings (committed) |
+| `secrets/` | password hashes (`radicale-users`) and per-service `*.env` secrets, not committed (except the `*.example` templates) |

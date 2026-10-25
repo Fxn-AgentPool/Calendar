@@ -4,7 +4,7 @@
 Runs every sample in scripts/samples/ through the same prompt and schema the
 ingest service uses, and compares the result with the expected events.
 
-    python3 scripts/bench_llm.py                       # LLM on 127.0.0.1:8080
+    python3 scripts/bench_llm.py                       # LLM on 127.0.0.1:<LLM_PORT from .env>
     python3 scripts/bench_llm.py --url http://host:8080 --repeat 3
 
 To compare models: change LLM_MODEL_FILE in .env, `docker compose up -d llm`,
@@ -26,6 +26,18 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
 from calapp.ingest.llm import LLMClient, LLMError  # noqa: E402
+
+
+def env_port(name: str, default: int) -> int:
+    """A port from the project's .env (KEY=value lines, # comments allowed)."""
+    try:
+        for line in (ROOT / ".env").read_text().splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key.strip() == name:
+                return int(value.split("#", 1)[0].strip())
+    except (OSError, ValueError):
+        pass
+    return default
 
 
 def matches(expected: dict, got: dict) -> bool:
@@ -64,7 +76,8 @@ def model_name(client: LLMClient) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--url", default="http://127.0.0.1:8080", help="llama.cpp server URL")
+    parser.add_argument("--url", default=f"http://127.0.0.1:{env_port('LLM_PORT', 8080)}",
+                        help="llama.cpp server URL")
     parser.add_argument("--samples", default=str(ROOT / "scripts" / "samples"), help="folder with sample .json files")
     parser.add_argument("--repeat", type=int, default=1, help="runs per sample (timings use the median)")
     parser.add_argument("--verbose", "-v", action="store_true", help="print the extracted events")

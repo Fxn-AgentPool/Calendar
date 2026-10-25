@@ -340,7 +340,7 @@ The prompt was tuned while testing Qwen3 4B, which favours it somewhat; the gaps
 | Script injection via event text shown in the agenda | Jinja2 autoescaping, strict Content-Security-Policy, no inline scripts |
 | LLM exposure | `llm` service only on the internal docker network |
 | Large or malicious payloads | body size limit, text length cap, HTML stripped, no attachments processed |
-| Data leakage | TLS ends on the user's own VPS (no third-party proxy); input text deleted after 24 h; secrets in a `.env` file that is not committed |
+| Data leakage | TLS ends on the user's own VPS (no third-party proxy); input text deleted after 24 h; secrets in per-service `secrets/*.env` files that are not committed (`.env` holds only ports and non-secret settings) |
 | Misuse of the review endpoints | separate helper key (hash only), off unless configured; the helper only returns an event, which goes through the same validation and conflict check; changes only the ingest service's own uncertain, unchanged events, with `If-Match` |
 | Container escape / lateral movement | non-root containers, read-only root filesystem where possible, no Docker socket mounts |
 
@@ -353,13 +353,13 @@ The prompt was tuned while testing Qwen3 4B, which favours it somewhat; the gaps
   - `ingest.<domain>` → `ingest:8000`, Pangolin login turned off.
   - `agenda.<domain>` → `web:8000`, Pangolin login **on**.
   - CrowdSec enabled on the VPS.
-- Configuration through `.env`:
-  - `USER_TIMEZONE`
-  - `CALDAV_URL`
-  - `INGEST_API_KEY_HASH`, `INGEST_CALDAV_USER`, `INGEST_CALDAV_PASSWORD`
-  - `AGENDA_CALDAV_USER`, `AGENDA_CALDAV_PASSWORD`, optional `AGENDA_PASSWORD_HASH`
-  - `LLM_URL`, `LLM_MODEL_FILE`
-  - `DEFAULT_EVENT_MINUTES`
+- Configuration:
+  - `.env` (committed): host ports (`RADICALE_PORT` 5232, `INGEST_PORT` 8000, `AGENDA_PORT` 8001, `LLM_PORT` 8080, `CHECKER_PORT` 8082, all on `BIND_ADDRESS`, default 127.0.0.1), model files, thread count, and behaviour settings (`DEFAULT_EVENT_MINUTES`, `CHECK_THRESHOLD`, …).
+  - `secrets/common.env`: `CAL_USER`, `USER_TIMEZONE` (radicale, ingest, web).
+  - `secrets/ingest.env`: `CALDAV_PASSWORD`, `INGEST_API_KEY_HASH`, `HELPER_API_KEY_HASH` (ingest only).
+  - `secrets/web.env`: `CALDAV_PASSWORD`, optional `AGENDA_PASSWORD_HASH` (web only).
+  - `secrets/newt.env`: Newt credentials, if Newt runs from this compose file.
+  - The `secrets/*.env` files are loaded with `env_file:`, so a service only sees its own; templates are committed as `*.example`. `scripts/radicale-passwd.sh` and `scripts/new_api_key.sh` write into them.
 - Model files sit in a volume (`./models`), downloaded once by a helper script.
 
 ## 11. Repository layout (planned)
@@ -367,7 +367,8 @@ The prompt was tuned while testing Qwen3 4B, which favours it somewhat; the gaps
 ```
 docs/DESIGN.md
 docker-compose.yml
-.env.example
+.env                   # ports and non-secret settings (committed)
+secrets/*.env.example  # templates for the per-service secrets
 radicale/              # Dockerfile, config, rights.template, entrypoint.sh
 app/                   # one Python package, one Docker image
   pyproject.toml

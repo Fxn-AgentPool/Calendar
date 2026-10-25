@@ -101,7 +101,8 @@ It waits for the result (and keeps polling if needed) and prints the summary. Ex
 
 Any tool that can send an HTTP POST works (Tasker, n8n, Home Assistant, a mail filter
 piping into `calsend.py`, …). Keep the API key out of logs and shared configs; if it
-leaks, create a new one with `scripts/new_api_key.sh` and update `.env`.
+leaks, create a new one with `scripts/new_api_key.sh` (it replaces the old one) and run
+`docker compose up -d ingest`.
 
 ## Desktop review helper (API ready, client not built yet)
 
@@ -110,8 +111,8 @@ Events the checker is unsure about are added marked `(?)` and queued (see
 its GPU is idle. The server side is ready; the helper program itself
 (`clients/review_helper.py`) is not written yet. This is the contract it will use.
 
-**Enable it** on the server: create a key with `scripts/new_api_key.sh`, put the hash in
-`.env` as `HELPER_API_KEY_HASH=…`, and run `docker compose up -d ingest`. Without it, the
+**Enable it** on the server: run `scripts/new_api_key.sh helper` (prints the key, writes
+its hash to `secrets/ingest.env`) and `docker compose up -d ingest`. Without it, the
 endpoints below answer `404`. The helper key is separate from the ingest key; neither
 works for the other's endpoints.
 

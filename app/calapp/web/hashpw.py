@@ -36,4 +36,5 @@ if __name__ == "__main__":
         raise SystemExit("use at least 12 characters")
     if getpass.getpass("Repeat: ") != first:
         raise SystemExit("passwords differ")
+    print("Put this line in secrets/web.env, then: docker compose up -d web")
     print(f"AGENDA_PASSWORD_HASH={hash_password(first)}")

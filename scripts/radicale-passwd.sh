@@ -5,7 +5,9 @@
 #   scripts/radicale-passwd.sh <username> --prompt # asks for a password
 #
 # The password is hashed with bcrypt inside the radicale image, so nothing
-# needs to be installed on the host. A generated password is printed once.
+# needs to be installed on the host. For "ingest" and "agenda" the password is
+# written to secrets/ingest.env or secrets/web.env; for your own account a
+# generated password is printed once.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -60,7 +62,22 @@ chmod 644 secrets/radicale-users
 chmod 700 secrets
 
 echo "Saved account '$user' in secrets/radicale-users."
-if [ "$mode" = generate ]; then
-    echo "Password (shown once): $password"
-fi
-echo "Radicale reads the file on each login; no restart needed."
+
+# The service accounts' passwords go straight into their services' secrets.
+. scripts/lib.sh
+case "$user" in
+    ingest)
+        set_secret ingest.env CALDAV_PASSWORD "$password"
+        echo "Wrote the password to secrets/ingest.env (docker compose up -d ingest to apply)."
+        ;;
+    agenda)
+        set_secret web.env CALDAV_PASSWORD "$password"
+        echo "Wrote the password to secrets/web.env (docker compose up -d web to apply)."
+        ;;
+    *)
+        if [ "$mode" = generate ]; then
+            echo "Password (shown once): $password"
+        fi
+        ;;
+esac
+echo "Radicale reads the account file on each login; no restart needed."

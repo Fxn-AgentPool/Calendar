@@ -5,15 +5,15 @@ services:
     build: ./radicale
     image: calendar-radicale:local
     restart: unless-stopped
-    environment:
-      CAL_USER: ${CAL_USER:?set CAL_USER in .env}
+    env_file: secrets/common.env
     volumes:
       - radicale-data:/var/lib/radicale/collections
       - ./secrets/radicale-users:/etc/radicale/users:ro
-    # Only on localhost, for a Newt running directly on the host and for
-    # local checks. A Newt container on the "calendar" network uses radicale:5232.
+    # On BIND_ADDRESS:RADICALE_PORT (.env), for a Newt running directly on the
+    # host and for local checks. A Newt container on the "calendar" network
+    # uses radicale:5232.
     ports:
-      - "127.0.0.1:5232:5232"
+      - "${BIND_ADDRESS:-127.0.0.1}:${RADICALE_PORT:-5232}:5232"
     networks:
       - calendar
     read_only: true
@@ -30,13 +30,13 @@ services:
     image: calendar-app:local
     restart: unless-stopped
     command: ["uvicorn", "calapp.ingest.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+    # Username/time zone, then ingest's own secrets (password, key hashes).
+    env_file:
+      - secrets/common.env
+      - secrets/ingest.env
     environment:
-      CAL_USER: ${CAL_USER:?set CAL_USER in .env}
-      USER_TIMEZONE: ${USER_TIMEZONE:-UTC}
       CALDAV_URL: http://radicale:5232
       CALDAV_USER: ingest
-      CALDAV_PASSWORD: ${INGEST_CALDAV_PASSWORD:?set INGEST_CALDAV_PASSWORD in .env}
-      INGEST_API_KEY_HASH: ${INGEST_API_KEY_HASH:?set INGEST_API_KEY_HASH in .env}
       INGEST_CALENDAR: ${INGEST_CALENDAR:-personal}
       LLM_URL: http://llm:8080
       DEFAULT_EVENT_MINUTES: ${DEFAULT_EVENT_MINUTES:-60}
@@ -45,13 +45,12 @@ services:
       # Confidence check (Kev-4B) and review queue; see docs/DESIGN.md §8.
       CHECKER_URL: ${CHECKER_URL-http://checker:8080}
       CHECK_THRESHOLD: ${CHECK_THRESHOLD:-0.5}
-      HELPER_API_KEY_HASH: ${HELPER_API_KEY_HASH:-}
     volumes:
       - ingest-data:/data
-    # For a Newt running directly on the host. A Newt container on the
-    # "calendar" network uses ingest:8000.
+    # For a Newt running directly on the host (port set in .env). A Newt
+    # container on the "calendar" network uses ingest:8000.
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${INGEST_PORT:-8000}:8000"
     networks:
       - calendar
       - llm
@@ -80,18 +79,18 @@ services:
     build: ./app
     restart: unless-stopped
     command: ["uvicorn", "calapp.web.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+    # Username/time zone, then the agenda account's password (and optional login hash).
+    env_file:
+      - secrets/common.env
+      - secrets/web.env
     environment:
-      CAL_USER: ${CAL_USER:?set CAL_USER in .env}
-      USER_TIMEZONE: ${USER_TIMEZONE:-UTC}
       CALDAV_URL: http://radicale:5232
       CALDAV_USER: agenda
-      CALDAV_PASSWORD: ${AGENDA_CALDAV_PASSWORD:?set AGENDA_CALDAV_PASSWORD in .env}
-      AGENDA_PASSWORD_HASH: ${AGENDA_PASSWORD_HASH:-}
       AGENDA_DAYS: ${AGENDA_DAYS:-14}
-    # For a Newt running directly on the host. A Newt container on the
-    # "calendar" network uses web:8000.
+    # For a Newt running directly on the host (port set in .env). A Newt
+    # container on the "calendar" network uses web:8000.
     ports:
-      - "127.0.0.1:8001:8000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${AGENDA_PORT:-8001}:8000"
     networks:
       - calendar
     depends_on:
@@ -118,7 +117,7 @@ services:
     # llama-server does not accept "--flag=value"; flag and value are separate.
     command:
       - --model
-      - /models/${LLM_MODEL_FILE:?set LLM_MODEL_FILE in .env}
+      - /models/${LLM_MODEL_FILE:-Qwen3-4B-Instruct-2507-Q4_K_M.gguf}
       - --threads
       - ${LLM_THREADS:-6}
       - --ctx-size
@@ -134,7 +133,7 @@ services:
     volumes:
       - ./models:/models:ro
     ports:
-      - "127.0.0.1:8080:8080"
+      - "${BIND_ADDRESS:-127.0.0.1}:${LLM_PORT:-8080}:8080"
     networks:
       - llm
     user: "65534:65534"
@@ -171,7 +170,7 @@ services:
     volumes:
       - ./models:/models:ro
     ports:
-      - "127.0.0.1:8082:8080"
+      - "${BIND_ADDRESS:-127.0.0.1}:${CHECKER_PORT:-8082}:8080"
     networks:
       - llm
     user: "65534:65534"
@@ -194,10 +193,9 @@ services:
     profiles:
       - newt
     restart: unless-stopped
-    environment:
-      PANGOLIN_ENDPOINT: ${PANGOLIN_ENDPOINT:-}
-      NEWT_ID: ${NEWT_ID:-}
-      NEWT_SECRET: ${NEWT_SECRET:-}
+    env_file:
+      - path: secrets/newt.env
+        required: false
     networks:
       - calendar
 

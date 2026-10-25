@@ -4,15 +4,17 @@
 #
 #   OWNER_PASS=... INGEST_PASS=... AGENDA_PASS=... scripts/smoke_test.sh [base_url]
 #
-# base_url defaults to http://127.0.0.1:5232; use https://cal.<domain> to test
-# through Pangolin. Accounts without a password in the environment are skipped.
+# base_url defaults to http://127.0.0.1:<RADICALE_PORT from .env>; use
+# https://cal.<domain> to test through Pangolin. Accounts without a password
+# in the environment are skipped.
 set -eu
 
 cd "$(dirname "$0")/.."
 [ -f .env ] && . ./.env
+[ -f secrets/common.env ] && . ./secrets/common.env
 
-base=${1:-http://127.0.0.1:5232}
-owner=${CAL_USER:?set CAL_USER (or create .env)}
+base=${1:-http://127.0.0.1:${RADICALE_PORT:-5232}}
+owner=${CAL_USER:?set CAL_USER in secrets/common.env}
 cal="$base/$owner/personal"
 uid="smoke-test-$(date +%s)"
 fails=0
