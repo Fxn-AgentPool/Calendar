@@ -1,6 +1,6 @@
 # Calendar + LLM Ingest — Design
 
-Status: milestones 1–2 (Radicale behind Pangolin, local LLM) implemented; the rest is not yet built.
+Status: milestones 1–3 (Radicale behind Pangolin, local LLM, ingest API with the conflict stub) implemented; the rest is not yet built.
 
 ## 1. Goals
 
@@ -174,9 +174,10 @@ Checks the liveness of the API, the LLM and Radicale. No authentication; returns
 
 1. **Accept:** authenticate, validate size, store the job, and put it on the queue.
 2. **Clean up:**
-   - Normalise whitespace and Unicode.
-   - Strip quoted email replies, signatures and HTML.
-   - Cut the text down to the size limit.
+   - Normalise whitespace and Unicode; remove invisible characters.
+   - Convert HTML to text.
+   - Quoted replies and forwarded parts are **kept**: the event is often in them.
+   - Cut the text down to the size limit (the start is kept).
 3. **Extract:** call `llama-server` with:
    - a system prompt containing the extraction rules;
    - the reference date and time (`received_at`) with weekday and time zone;

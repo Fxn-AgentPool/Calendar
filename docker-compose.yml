@@ -24,6 +24,49 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # Ingest API: text in, events out. Exposed as ingest.<domain> via Pangolin.
+  ingest:
+    build: ./app
+    image: calendar-app:local
+    restart: unless-stopped
+    command: ["uvicorn", "calapp.ingest.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+    environment:
+      CAL_USER: ${CAL_USER:?set CAL_USER in .env}
+      USER_TIMEZONE: ${USER_TIMEZONE:-UTC}
+      CALDAV_URL: http://radicale:5232
+      CALDAV_USER: ingest
+      CALDAV_PASSWORD: ${INGEST_CALDAV_PASSWORD:?set INGEST_CALDAV_PASSWORD in .env}
+      INGEST_API_KEY_HASH: ${INGEST_API_KEY_HASH:?set INGEST_API_KEY_HASH in .env}
+      INGEST_CALENDAR: ${INGEST_CALENDAR:-personal}
+      LLM_URL: http://llm:8080
+      DEFAULT_EVENT_MINUTES: ${DEFAULT_EVENT_MINUTES:-60}
+      INGEST_RATE_LIMIT_PER_HOUR: ${INGEST_RATE_LIMIT_PER_HOUR:-30}
+    volumes:
+      - ingest-data:/data
+    # For a Newt running directly on the host. A Newt container on the
+    # "calendar" network uses ingest:8000.
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - calendar
+      - llm
+    depends_on:
+      - radicale
+      - llm
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=8)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   # Local LLM (llama.cpp server). Never exposed through Pangolin: it is only
   # on the "llm" network (shared with the ingest service) and on 127.0.0.1
   # for scripts/bench_llm.py.
@@ -81,6 +124,7 @@ services:
 
 volumes:
   radicale-data:
+  ingest-data:
 
 networks:
   calendar:

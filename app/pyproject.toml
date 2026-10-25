@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "calapp"
+version = "0.1.0"
+description = "Calendar ingest API and agenda view"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.162.0",
+    "uvicorn==0.54.0",
+    "pydantic==2.14.1",
+    "httpx==0.28.1",
+    "icalendar==7.3.0",
+    "recurring-ical-events==3.8.2",
+    "jinja2==3.1.6",
+    "tzdata==2026.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    # Tests run against a real Radicale using the repo's config and rights.
+    "radicale==3.8.3",
+    "bcrypt==5.0.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["calapp*"]
+
+[tool.setuptools.package-data]
+calapp = ["web/templates/*.html", "web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

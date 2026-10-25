@@ -3,7 +3,7 @@
 Self-hosted calendar (Radicale/CalDAV) with a local LLM that turns forwarded
 text into calendar events. Design: [docs/DESIGN.md](docs/DESIGN.md).
 
-Status: **milestone 2**: Radicale behind Pangolin, local LLM with benchmark.
+Status: **milestone 3**: Radicale behind Pangolin, local LLM, ingest API.
 
 ## Requirements
 
@@ -105,6 +105,36 @@ of the `.json` files) for the kinds of text you send most.
 Settings in `.env`: `LLM_THREADS` (number of physical cores, default 6) and
 `LLM_CTX_SIZE` (default 8192 tokens; enough for ~20,000 characters of input).
 
+## Ingest API
+
+```sh
+scripts/new_api_key.sh     # prints a key for your client and INGEST_API_KEY_HASH for .env
+# in .env: INGEST_CALDAV_PASSWORD (the "ingest" account's password), INGEST_API_KEY_HASH
+docker compose up -d --build ingest
+```
+
+Pangolin: add an HTTP resource `ingest` → `ingest:8000` (or `127.0.0.1:8000` for Newt on
+the host), authentication **off**: the API checks its own key.
+
+Send text:
+
+```sh
+curl -s -X POST "https://ingest.<domain>/ingest?wait=60" \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"text": "Dentist moved to Tuesday 14:00", "source": "chat"}'
+```
+
+The reply has `ok` (true if every event was added or already there), a one-line-per-event
+`summary` to show as a notification, and the details per event. Without `?wait=` (or if
+the wait runs out) the reply is `202` with a `job_id`; fetch the result from
+`GET /jobs/<job_id>` with the same key. Full API description: `docs/DESIGN.md` §5.
+
+Tests (run against a real Radicale using this repo's config):
+
+```sh
+cd app && python3 -m venv .venv && .venv/bin/pip install -e '.[dev]' && .venv/bin/pytest
+```
+
 ## Connecting devices
 
 | Client | How |
@@ -129,9 +159,9 @@ delete calendars and import/export `.ics` files. It has no calendar view.
 
 | Path | What |
 |------|------|
-| `docker-compose.yml` | services (Radicale, LLM; optional Newt) |
+| `docker-compose.yml` | services (Radicale, ingest API, LLM; optional Newt) |
 | `radicale/` | image, config, rights template, entrypoint |
-| `app/calapp/` | Python code; `ingest/llm.py` holds the extraction prompt and schema |
+| `app/` | Python code (`calapp/ingest/`: API, pipeline, prompt) and tests |
 | `scripts/` | account, smoke test, backup, model download and benchmark helpers |
 | `models/` | downloaded model files, not committed |
 | `secrets/` | password hashes (`radicale-users`), not committed |

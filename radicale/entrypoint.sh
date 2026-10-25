@@ -31,4 +31,13 @@ for account in ingest agenda; do
     mkdir -p "/var/lib/radicale/collections/collection-root/${account}"
 done
 
+# The ingest service writes to the owner's "personal" calendar, which would
+# otherwise only appear after the owner's first login.
+personal="/var/lib/radicale/collections/collection-root/${CAL_USER}/personal"
+if [ ! -d "$personal" ]; then
+    mkdir -p "$personal"
+    printf '%s' '{"C:supported-calendar-component-set": "VEVENT,VTODO", "D:displayname": "Personal", "tag": "VCALENDAR"}' \
+        > "$personal/.Radicale.props"
+fi
+
 exec "$@"
