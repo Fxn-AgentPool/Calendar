@@ -203,8 +203,16 @@ volumes:
   radicale-data:
   ingest-data:
 
+# Fixed address ranges (set in .env), so Docker doesn't have to take them from
+# its default pools, which run out on hosts with many compose projects.
 networks:
   calendar:
     name: calendar
+    ipam:
+      config:
+        - subnet: ${CALENDAR_SUBNET:-10.250.42.0/27}
   llm:
     name: calendar-llm
+    ipam:
+      config:
+        - subnet: ${CALENDAR_LLM_SUBNET:-10.250.42.32/27}
