@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<article class="event cal-{{ occ.calendar_index }}">
+  <dl>
+    <dt>When</dt><dd>{{ occ | span }}</dd>
+    {% if occ.location %}<dt>Where</dt><dd>{{ occ.location }}</dd>{% endif %}
+    <dt>Calendar</dt><dd><span class="swatch"></span>{{ occ.calendar }}</dd>
+    {% if occ.transparent %}<dt>Shows as</dt><dd>free</dd>{% endif %}
+  </dl>
+  {% if occ.description %}<p class="notes">{{ occ.description }}</p>{% endif %}
+  {% if occ.ingest_job %}<p class="origin"><span class="badge">auto</span> Added from text by the ingest service (job <code>{{ occ.ingest_job }}</code>).</p>{% endif %}
+  <p><a href="{{ back_url }}">← Back to agenda</a></p>
+</article>
+{% endblock %}

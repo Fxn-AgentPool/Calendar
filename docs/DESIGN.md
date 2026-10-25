@@ -1,6 +1,6 @@
 # Calendar + LLM Ingest — Design
 
-Status: milestones 1–3 (Radicale behind Pangolin, local LLM, ingest API with the conflict stub) implemented; the rest is not yet built.
+Status: milestones 1–4 (Radicale behind Pangolin, local LLM, ingest API with the conflict stub, agenda view) implemented; the rest is not yet built.
 
 ## 1. Goals
 
@@ -238,11 +238,11 @@ A small read-only web page for checking the calendar from any browser. It replac
 - Served at `agenda.<domain>`, a separate service (`web`) with its own Pangolin resource.
 - This is the only browser-facing part of the system, so **Pangolin's resource login stays on** here (SSO or password). Nobody reaches the app without logging in through Pangolin first.
 - The app reads Radicale with the `agenda` account, which is **read-only** (§3). Even if the Pangolin login were bypassed, nothing can be changed through it.
-- Optional extra layer: HTTP Basic login in the app itself (`AGENDA_PASSWORD_HASH`), off by default to avoid logging in twice.
+- Optional extra layer: HTTP Basic login in the app itself (`AGENDA_PASSWORD_HASH`, PBKDF2-SHA256 from `python -m calapp.web.hashpw`, username = `CAL_USER`), off by default to avoid logging in twice.
 - Only `GET` routes; no forms, no cookies set by the app, so there is nothing to forge (no CSRF surface).
 - Response headers:
-  - A strict `Content-Security-Policy` (`default-src 'self'`, no inline scripts).
-  - `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`.
+  - A strict `Content-Security-Policy`: `default-src 'none'; style-src 'self'; img-src 'self'` — no scripts at all, no inline styles.
+  - `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
   - `Cache-Control: private, no-store`.
 - Event text from the calendar (including text the LLM extracted) is HTML-escaped by Jinja2 autoescaping; the ingest input is untrusted, so this matters.
 
@@ -251,9 +251,10 @@ A small read-only web page for checking the calendar from any browser. It replac
 | Route | View |
 |-------|------|
 | `/` | Agenda: the next 14 days as a list grouped by day. Default view; works well on a phone. |
-| `/week/{yyyy-mm-dd}` | Week: seven columns with time slots; all-day events in a strip at the top. |
+| `/week/{yyyy-mm-dd}` | Week (Monday to Sunday) containing that day: seven columns, each a time-sorted list with all-day events first; one column per row on a phone. |
 | `/month/{yyyy-mm}` | Month: grid with event titles per day, "+N more" when a day is full. |
-| `/event/{uid}` | Detail: time, location, notes, calendar name; a "created by ingest" badge with the job ID for `llm-ingest` events. |
+| `/event?day=…&uid=…` | Detail of one occurrence: time, location, notes, calendar name; an "auto" badge with the job ID for events added by the ingest service. |
+| `/calendars.css` | Calendar colours as CSS (keeps colours out of inline styles; only `#rrggbb` values pass). |
 
 - Every view has back, forward and "today" links.
 - Everything is shown in `USER_TIMEZONE`.
@@ -264,7 +265,8 @@ A small read-only web page for checking the calendar from any browser. It replac
 
 - Reads all calendars of the user (each gets its own colour), using a CalDAV time-range query for the visible range only.
 - Repeating events are expanded into individual dates on the server with the `recurring-ical-events` library.
-- An in-memory cache keeps results for 30–60 s, so reloading doesn't hit Radicale every time.
+- An in-memory cache keeps results for 60 s (`AGENDA_CACHE_SECONDS`), so reloading doesn't hit Radicale every time.
+- Cancelled events (`STATUS:CANCELLED`) are not shown; events spanning several days appear on each day.
 - If Radicale is unreachable, the page shows a clear error message instead of an empty calendar.
 
 ## 8. Security model
@@ -310,7 +312,8 @@ radicale/              # Dockerfile, config, rights.template, entrypoint.sh
 app/                   # one Python package, one Docker image
   pyproject.toml
   Dockerfile
-  calapp/common/caldav.py    # CalDAV client: reads, writes, duplicate check, conflict stub
+  calapp/common/caldav.py    # CalDAV client: create-only writes, time-range queries, calendar list
+  calapp/common/events.py    # expands stored events (incl. repeating ones) into occurrences
   calapp/common/settings.py  # configuration from the environment
   calapp/ingest/main.py      # ingest API routes
   calapp/ingest/worker.py    # job queue + pipeline

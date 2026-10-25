@@ -89,3 +89,23 @@ class IngestSettings:
             max_text_chars=_int("MAX_TEXT_CHARS", 20_000),
             llm_timeout=_int("LLM_TIMEOUT_SECONDS", 300),
         )
+
+
+@dataclass(frozen=True)
+class WebSettings:
+    caldav: CalDAVSettings
+    agenda_days: int
+    cache_seconds: int
+    password_hash: str | None  # optional extra login in the app itself
+
+    @classmethod
+    def from_env(cls) -> WebSettings:
+        password_hash = os.environ.get("AGENDA_PASSWORD_HASH") or None
+        if password_hash and not password_hash.startswith("pbkdf2_sha256$"):
+            raise ConfigError("AGENDA_PASSWORD_HASH must come from `python -m calapp.web.hashpw`")
+        return cls(
+            caldav=CalDAVSettings.from_env(),
+            agenda_days=_int("AGENDA_DAYS", 14),
+            cache_seconds=_int("AGENDA_CACHE_SECONDS", 60),
+            password_hash=password_hash,
+        )

@@ -67,6 +67,42 @@ services:
       retries: 3
       start_period: 60s
 
+  # Read-only agenda view. Exposed as agenda.<domain> via Pangolin, with
+  # Pangolin's login switched ON for that resource.
+  web:
+    image: calendar-app:local
+    build: ./app
+    restart: unless-stopped
+    command: ["uvicorn", "calapp.web.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+    environment:
+      CAL_USER: ${CAL_USER:?set CAL_USER in .env}
+      USER_TIMEZONE: ${USER_TIMEZONE:-UTC}
+      CALDAV_URL: http://radicale:5232
+      CALDAV_USER: agenda
+      CALDAV_PASSWORD: ${AGENDA_CALDAV_PASSWORD:?set AGENDA_CALDAV_PASSWORD in .env}
+      AGENDA_PASSWORD_HASH: ${AGENDA_PASSWORD_HASH:-}
+      AGENDA_DAYS: ${AGENDA_DAYS:-14}
+    # For a Newt running directly on the host. A Newt container on the
+    # "calendar" network uses web:8000.
+    ports:
+      - "127.0.0.1:8001:8000"
+    networks:
+      - calendar
+    depends_on:
+      - radicale
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=8)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Local LLM (llama.cpp server). Never exposed through Pangolin: it is only
   # on the "llm" network (shared with the ingest service) and on 127.0.0.1
   # for scripts/bench_llm.py.

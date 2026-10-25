@@ -3,7 +3,7 @@
 Self-hosted calendar (Radicale/CalDAV) with a local LLM that turns forwarded
 text into calendar events. Design: [docs/DESIGN.md](docs/DESIGN.md).
 
-Status: **milestone 3**: Radicale behind Pangolin, local LLM, ingest API.
+Status: **milestone 4**: Radicale behind Pangolin, local LLM, ingest API, agenda view.
 
 ## Requirements
 
@@ -135,6 +135,25 @@ Tests (run against a real Radicale using this repo's config):
 cd app && python3 -m venv .venv && .venv/bin/pip install -e '.[dev]' && .venv/bin/pytest
 ```
 
+## Agenda view
+
+A read-only agenda, week and month view at `agenda.<domain>`.
+
+```sh
+# in .env: AGENDA_CALDAV_PASSWORD (the "agenda" account's password)
+docker compose up -d --build web
+```
+
+Pangolin: add an HTTP resource `agenda` → `web:8000` (or `127.0.0.1:8001` for Newt on the
+host) with authentication **on** (SSO or password). This is the one hostname used only
+from a browser, so Pangolin's login works here.
+
+Optional second login inside the app (username = `CAL_USER`):
+`docker compose run --rm --no-deps web python -m calapp.web.hashpw`, then put the printed
+`AGENDA_PASSWORD_HASH=…` in `.env` and `docker compose up -d web`.
+
+Events added by the ingest service carry an "auto" badge; the detail page shows the job ID.
+
 ## Connecting devices
 
 | Client | How |
@@ -159,9 +178,9 @@ delete calendars and import/export `.ics` files. It has no calendar view.
 
 | Path | What |
 |------|------|
-| `docker-compose.yml` | services (Radicale, ingest API, LLM; optional Newt) |
+| `docker-compose.yml` | services (Radicale, ingest API, agenda view, LLM; optional Newt) |
 | `radicale/` | image, config, rights template, entrypoint |
-| `app/` | Python code (`calapp/ingest/`: API, pipeline, prompt) and tests |
+| `app/` | Python code (`calapp/ingest/`: API, pipeline, prompt; `calapp/web/`: agenda view) and tests |
 | `scripts/` | account, smoke test, backup, model download and benchmark helpers |
 | `models/` | downloaded model files, not committed |
 | `secrets/` | password hashes (`radicale-users`), not committed |

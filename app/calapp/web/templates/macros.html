@@ -1,0 +1,8 @@
+{% macro item(occ, day, show_time=True) -%}
+<a class="item cal-{{ occ.calendar_index }}{% if occ.all_day %} all-day{% endif %}" href="/event?day={{ day }}&amp;uid={{ occ.uid | urlencode }}">
+  {%- if show_time %}<span class="when">{{ occ | span(day) }}</span>{% endif -%}
+  <span class="what">{{ occ.title }}</span>
+  {%- if occ.ingest_job %}<span class="badge" title="Added from text">auto</span>{% endif -%}
+  {%- if occ.location %}<span class="where">{{ occ.location }}</span>{% endif -%}
+</a>
+{%- endmacro %}

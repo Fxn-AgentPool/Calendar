@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ title }} · Calendar</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/calendars.css">
+</head>
+<body>
+<header>
+  <nav class="views">
+    <a href="/"{% if view == "agenda" %} aria-current="page"{% endif %}>Agenda</a>
+    <a href="/week/{{ today }}"{% if view == "week" %} aria-current="page"{% endif %}>Week</a>
+    <a href="/month/{{ today.strftime('%Y-%m') }}"{% if view == "month" %} aria-current="page"{% endif %}>Month</a>
+  </nav>
+  {% if prev_url %}
+  <nav class="steps">
+    <a href="{{ prev_url }}" aria-label="Previous">‹</a>
+    <a href="{{ today_url }}">Today</a>
+    <a href="{{ next_url }}" aria-label="Next">›</a>
+  </nav>
+  {% endif %}
+</header>
+<main>
+<h1>{{ title }}</h1>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

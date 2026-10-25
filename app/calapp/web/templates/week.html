@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "macros.html" import item %}
+{% block content %}
+<div class="week">
+{% for day in days %}
+  <section class="col{% if day == today %} today{% endif %}">
+    <h2><a href="/?start={{ day }}">{{ day.strftime("%a") }} <span>{{ day.strftime("%d %b") }}</span></a></h2>
+    {% for occ in grouped[day] %}{{ item(occ, day) }}{% else %}<p class="none">–</p>{% endfor %}
+  </section>
+{% endfor %}
+</div>
+{% endblock %}

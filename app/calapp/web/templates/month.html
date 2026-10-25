@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "macros.html" import item %}
+{% block content %}
+<table class="month">
+  <thead><tr>{% for name in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] %}<th scope="col">{{ name }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for week in weeks %}
+    <tr>
+    {% for day in week %}
+      {% set items = grouped[day] %}
+      <td class="{% if day.month != month.month %}other{% endif %}{% if day == today %} today{% endif %}">
+        <a class="date" href="/?start={{ day }}">{{ day.day }}</a>
+        {% for occ in items[:limit] %}{{ item(occ, day, show_time=False) }}{% endfor %}
+        {% if items | length > limit %}<a class="more" href="/?start={{ day }}">+{{ items | length - limit }} more</a>{% endif %}
+      </td>
+    {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "macros.html" import item %}
+{% block content %}
+<ol class="agenda">
+{% for day in days %}
+  <li class="day{% if day == today %} today{% endif %}{% if not grouped[day] %} empty{% endif %}">
+    <h2><a href="/week/{{ day }}">{{ day.strftime("%a %d %b") }}</a>{% if day == today %} <span class="today-tag">today</span>{% endif %}</h2>
+    {% for occ in grouped[day] %}{{ item(occ, day) }}{% else %}<p class="none">Nothing planned</p>{% endfor %}
+  </li>
+{% endfor %}
+</ol>
+{% endblock %}
