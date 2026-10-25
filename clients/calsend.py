@@ -67,6 +67,43 @@ def request(method: str, url: str, key: str, body: dict | None = None) -> tuple[
         return e.code, detail
 
 
+class SendError(Exception):
+    """Sending failed; ``code`` is the exit code to use."""
+
+    def __init__(self, message: str, code: int):
+        super().__init__(message)
+        self.code = code
+
+
+def send(url: str, key: str, text: str, source: str | None = None) -> tuple[int, dict]:
+    """Send text, wait for the result. Returns (exit code, job). Raises SendError."""
+    body = {"text": text, "received_at": datetime.now(timezone.utc).astimezone().isoformat()}
+    if source:
+        body["source"] = source
+    base = url.rstrip("/")
+    try:
+        status, job = request("POST", f"{base}/ingest?wait={WAIT_SECONDS}", key, body)
+        # Still running after the wait: poll until it finishes.
+        deadline = time.monotonic() + POLL_FOR_SECONDS
+        while status == 202 and time.monotonic() < deadline:
+            time.sleep(POLL_INTERVAL)
+            status, job = request("GET", f"{base}/jobs/{job['job_id']}", key)
+            if job.get("status") in ("pending", "running"):
+                status = 202
+    except (urllib.error.URLError, OSError) as e:
+        raise SendError(f"could not reach {base}: {e}", 1) from e
+
+    if status == 202:
+        raise SendError(f"still processing (job {job.get('job_id')}); check later", 1)
+    if status != 200:
+        message = job.get("detail") if isinstance(job, dict) else None
+        raise SendError(f"error {status}: {message or 'request failed'}", 3 if status in (401, 413, 422) else 1)
+    if job.get("ok"):
+        return 0, job
+    outcomes = {e.get("outcome") for e in job.get("events", [])}
+    return (2 if outcomes & {"added", "duplicate"} else 1), job
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Send text to the calendar ingest API.")
     parser.add_argument("text", nargs="*", help="the text (default: read from --file or stdin)")
@@ -93,39 +130,16 @@ def main(argv: list[str] | None = None) -> int:
         print("text is empty", file=sys.stderr)
         return 3
 
-    body = {"text": text, "received_at": datetime.now(timezone.utc).astimezone().isoformat()}
-    if args.source:
-        body["source"] = args.source
-    base = url.rstrip("/")
     try:
-        status, job = request("POST", f"{base}/ingest?wait={WAIT_SECONDS}", key, body)
-        # Still running after the wait: poll until it finishes.
-        deadline = time.monotonic() + POLL_FOR_SECONDS
-        while status == 202 and time.monotonic() < deadline:
-            time.sleep(POLL_INTERVAL)
-            status, job = request("GET", f"{base}/jobs/{job['job_id']}", key)
-            if job.get("status") in ("pending", "running"):
-                status = 202
-    except (urllib.error.URLError, OSError) as e:
-        print(f"could not reach {base}: {e}", file=sys.stderr)
-        return 1
-
-    if status == 202:
-        print(f"still processing (job {job.get('job_id')}); check later", file=sys.stderr)
-        return 1
-    if status != 200:
-        message = job.get("detail") if isinstance(job, dict) else None
-        print(f"error {status}: {message or 'request failed'}", file=sys.stderr)
-        return 3 if status in (401, 413, 422) else 1
-
+        code, job = send(url, key, text, args.source)
+    except SendError as e:
+        print(e, file=sys.stderr)
+        return e.code
     if args.json:
         print(json.dumps(job, indent=2, ensure_ascii=False))
     else:
         print(job.get("summary") or job.get("status"))
-    if job.get("ok"):
-        return 0
-    outcomes = {e.get("outcome") for e in job.get("events", [])}
-    return 2 if outcomes & {"added", "duplicate"} else 1
+    return code
 
 
 if __name__ == "__main__":

@@ -97,6 +97,17 @@ It waits for the result (and keeps polling if needed) and prints the summary. Ex
 `0` everything added or already there, `2` some events not added (conflict or skipped),
 `1` failed, `3` usage/configuration error (e.g. wrong key).
 
+## Linux desktop: `clients/calsend_gui.py` (temporary)
+
+A bare window: paste text, optionally pick a source, press **Send** or Ctrl+Enter; the
+result line appears below when the server is done (the window stays usable meanwhile).
+Same configuration as `calsend.py` (`~/.config/calsend.conf`). Needs tkinter:
+
+```sh
+sudo apt install python3-tk
+clients/calsend_gui.py
+```
+
 ## Anything else
 
 Any tool that can send an HTTP POST works (Tasker, n8n, Home Assistant, a mail filter
