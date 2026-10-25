@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from calapp.ingest.llm import EXTRACTION_SCHEMA, LLMClient, LLMError, build_messages
+from calapp.ingest.llm import EXTRACTION_SCHEMA, LLMClient, LLMError, build_messages, day_table
 
 
 class Stub:
@@ -69,9 +69,17 @@ def test_sends_schema_and_parses_events(stub):
 def test_prompt_contains_reference_date_and_text():
     messages = build_messages("Lunch Friday", REF, "Europe/Berlin", "chat")
     user = messages[1]["content"]
-    assert "Friday, 2026-10-23 09:00" in user
+    assert "Today: Fri 2026-10-23, current time 09:00" in user
     assert "Europe/Berlin" in user and "Source: chat" in user
     assert "<text>\nLunch Friday\n</text>" in user
+
+
+def test_day_table_lists_weekdays_around_today():
+    table = day_table(REF).splitlines()
+    assert table[0] == "2026-10-22 Thursday (yesterday)"
+    assert table[1] == "2026-10-23 Friday (today)"
+    assert table[2] == "2026-10-24 Saturday (tomorrow)"
+    assert table[-1] == "2026-11-12 Thursday"
 
 
 @pytest.mark.parametrize("response, code", [
