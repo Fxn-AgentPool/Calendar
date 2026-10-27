@@ -25,7 +25,7 @@ from calapp.common.settings import IngestSettings
 from calapp.ingest.checker import Checker
 from calapp.ingest.jobs import JobStore
 from calapp.ingest.llm import LLMClient, LLMError
-from calapp.ingest.models import IngestRequest, JobResult
+from calapp.ingest.models import EventsRequest, IngestRequest, JobResult
 from calapp.ingest.pipeline import Pipeline, summarize
 from calapp.ingest.reviews import ReviewQueue, apply_result, task_for
 
@@ -211,6 +211,36 @@ def create_app(
             status_code=202,
             headers={"Location": f"/jobs/{job_id}"},
         )
+
+    @app.post("/events", dependencies=[Depends(require_key)])
+    async def events(request: Request):
+        """Events already extracted by the desktop's model: validate, check, write. No LLM."""
+        body = await request.body()
+        if len(body) > settings.max_body_bytes:
+            raise HTTPException(413, "request too large")
+        try:
+            payload = EventsRequest.model_validate_json(body)
+        except ValidationError as e:
+            errors = [{"field": ".".join(map(str, err["loc"])), "message": err["msg"]} for err in e.errors()]
+            return JSONResponse({"detail": errors}, status_code=422)
+        retry_after = limiter.check()
+        if retry_after is not None:
+            raise HTTPException(429, "rate limit reached", headers={"Retry-After": str(retry_after)})
+
+        reference, tz = pipeline.reference_of(payload.received_at, payload.timezone)
+        text = payload.text or "(events extracted on the desktop)"
+        job_id = store.create(IngestRequest(text=text, received_at=reference, timezone=str(tz), source="desktop"))
+        store.mark_running(job_id)
+        by = payload.extracted_by or "the desktop model"
+        results = await asyncio.to_thread(
+            pipeline.process_events, job_id, payload.events, text=text, reference=reference, tz=tz,
+            source="desktop", check=False, note=f"Extracted by {by}.",
+        )
+        store.finish(job_id, results, summarize(results, tz))
+        counts = collections.Counter(r.outcome for r in results)
+        log.info("job %s (desktop events): %s", job_id, " ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+        job = store.get(job_id)
+        return JSONResponse(job.model_dump(mode="json"), status_code=200)
 
     @app.get("/jobs/{job_id}", dependencies=[Depends(require_key)], response_model=JobResult)
     async def get_job(job_id: str):

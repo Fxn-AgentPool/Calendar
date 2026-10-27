@@ -317,19 +317,36 @@ class Pipeline:
                 time.sleep(delay)
         raise AssertionError("unreachable")
 
-    def run(self, job_id: str, request: IngestRequest) -> list[EventResult]:
-        """Process one job. Raises LLMError if extraction fails."""
-        tz = ZoneInfo(request.timezone) if request.timezone else self.user_tz
-        reference = request.received_at or datetime.now(tz)
+    def reference_of(self, received_at: datetime | None, timezone: str | None) -> tuple[datetime, ZoneInfo]:
+        """The moment relative dates refer to, in the request's (or the user's) zone."""
+        tz = ZoneInfo(timezone) if timezone else self.user_tz
+        reference = received_at or datetime.now(tz)
         if reference.tzinfo is None:
             reference = reference.replace(tzinfo=tz)
-        reference = reference.astimezone(tz)
+        return reference.astimezone(tz), tz
 
+    def run(self, job_id: str, request: IngestRequest) -> list[EventResult]:
+        """Process one job. Raises LLMError if extraction fails."""
+        reference, tz = self.reference_of(request.received_at, request.timezone)
         text = textprep.clean(request.text, self.max_text_chars)
         raw_events = self._extract(text, reference, str(tz), request.source)
+        return self.process_events(job_id, raw_events, text=text, reference=reference, tz=tz,
+                                   source=request.source)
 
+    def process_events(
+        self, job_id: str, raw_events: list[dict], *, text: str, reference: datetime, tz: ZoneInfo,
+        source: str | None = None, check: bool = True, note: str | None = None,
+    ) -> list[EventResult]:
+        """Validate, de-duplicate, conflict-check and write extracted events.
+
+        ``check=False`` skips the confidence check (events already extracted by
+        the bigger desktop model); ``note`` is added to each event's description.
+        """
         results: list[EventResult] = []
         for raw in raw_events:
+            if not isinstance(raw, dict):
+                results.append(EventResult(outcome="invalid", title="(untitled)", reason="not an event"))
+                continue
             title = _text(raw.get("title"), 200) or "(untitled)"
             try:
                 event = normalize(raw, reference=reference, user_tz=tz, default_minutes=self.default_minutes)
@@ -348,15 +365,16 @@ class Pipeline:
                     result.outcome = "conflict"
                     result.conflicts_with = conflicts
                 else:
-                    self._check(text, reference, event, result)
+                    if check:
+                        self._check(text, reference, event, result)
                     confidence = result.confidence if result.uncertain else None
-                    ical = to_ical(event, job_id, confidence=confidence)
+                    ical = to_ical(event, job_id, confidence=confidence, note=note)
                     if not self.calendar.create(self.calendar_path, event.uid, ical):
                         result.outcome = "duplicate"
                     elif result.uncertain and self.reviews is not None:
                         self.reviews.add(
                             job_id=job_id, text=text, reference=reference, timezone=str(tz),
-                            source=request.source, raw=raw, event=event, confidence=result.confidence,
+                            source=source, raw=raw, event=event, confidence=result.confidence,
                         )
             except CalDAVError as e:
                 log.warning("job %s: calendar error: %s", job_id, e)

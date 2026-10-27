@@ -160,3 +160,42 @@ def test_unfinished_jobs_resume_after_restart(make_client, tmp_path):
             break
         time.sleep(0.1)
     assert job["status"] == "done" and job["ok"]
+
+
+# --- POST /events: events extracted on the desktop -----------------------------
+
+DESKTOP = {"events": [{"title": "Dentist", "all_day": False, "start": "2026-10-27T14:00",
+                       "end": "2026-10-27T14:45", "timezone": None, "location": "Praxis Weber",
+                       "notes": None}],
+           "received_at": "2026-10-23T09:00:00+02:00", "text": "screenshot of a reminder",
+           "extracted_by": "Qwen3-VL 8B"}
+
+
+def test_events_endpoint_writes_without_llm(make_client, clean_calendar):
+    llm = FakeLLM(error="llm_unreachable")  # must not be needed
+    resp = make_client(llm).post("/events", json=DESKTOP, headers=AUTH)
+    assert resp.status_code == 200
+    job = resp.json()
+    assert job["status"] == "done" and job["ok"] is True
+    assert job["summary"] == "Added: Dentist, Tue 27 Oct 14:00–14:45"
+    assert llm.calls == []
+    ics = clean_calendar.get(f"/{OWNER}/personal/{job['events'][0]['uid']}.ics").text
+    assert "Extracted by Qwen3-VL 8B." in ics and "LOCATION:Praxis Weber" in ics
+
+
+def test_events_endpoint_validates_and_dedupes(make_client):
+    client = make_client()
+    client.post("/events", json=DESKTOP, headers=AUTH)
+    body = dict(DESKTOP, events=[DESKTOP["events"][0], {"title": "Old", "start": "2020-01-01T10:00"}, {}])
+    job = client.post("/events", json=body, headers=AUTH).json()
+    assert [e["outcome"] for e in job["events"]] == ["duplicate", "invalid", "invalid"]
+    assert job["ok"] is False
+    assert client.post("/events", json=dict(DESKTOP, events=["junk"]), headers=AUTH).status_code == 422
+
+
+def test_events_endpoint_auth_and_shape(make_client):
+    client = make_client()
+    assert client.post("/events", json=DESKTOP).status_code == 401
+    assert client.post("/events", json={"events": []}, headers=AUTH).status_code == 422
+    assert client.post("/events", json={"events": [{}] * 11}, headers=AUTH).status_code == 422
+    assert client.post("/events", json=dict(DESKTOP, extra=1), headers=AUTH).status_code == 422

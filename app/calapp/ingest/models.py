@@ -29,6 +29,21 @@ class IngestRequest(BaseModel):
         return value
 
 
+class EventsRequest(BaseModel):
+    """Events already extracted elsewhere (the desktop model): POST /events."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    events: list[dict] = Field(min_length=1, max_length=10)
+    received_at: datetime | None = None
+    timezone: str | None = Field(default=None, max_length=64)
+    # The text (or a description of the screenshot) the events came from; kept with the job.
+    text: str | None = Field(default=None, max_length=20_000)
+    extracted_by: str | None = Field(default=None, max_length=80)
+
+    _valid_zone = field_validator("timezone")(IngestRequest._valid_zone.__func__)
+
+
 Outcome = Literal["added", "duplicate", "conflict", "invalid", "error"]
 
 
