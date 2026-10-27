@@ -116,14 +116,36 @@ _TABLE_BEFORE = 1
 _TABLE_AFTER = 20
 
 
-def day_table(reference: datetime) -> str:
+# Weekday names added to the day table, so the model doesn't have to translate
+# "Donnerstag" to Thursday before looking it up. Languages come from the
+# DAY_TABLE_LANGUAGES environment variable (comma-separated, default "de").
+WEEKDAY_NAMES = {
+    "de": ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
+    "fr": ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"],
+    "es": ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"],
+    "it": ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"],
+    "nl": ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"],
+}
+_ENGLISH = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def table_languages() -> list[str]:
+    import os
+
+    wanted = os.environ.get("DAY_TABLE_LANGUAGES", "de")
+    return [lang.strip() for lang in wanted.split(",") if lang.strip() in WEEKDAY_NAMES]
+
+
+def day_table(reference: datetime, languages: list[str] | None = None) -> str:
     """Weekday/date lookup table, so the model doesn't have to count days."""
+    languages = table_languages() if languages is None else languages
     today = reference.date()
     lines = []
     for offset in range(-_TABLE_BEFORE, _TABLE_AFTER + 1):
         day = today + timedelta(days=offset)
+        names = " / ".join([_ENGLISH[day.weekday()]] + [WEEKDAY_NAMES[lang][day.weekday()] for lang in languages])
         label = {-1: " (yesterday)", 0: " (today)", 1: " (tomorrow)"}.get(offset, "")
-        lines.append(f"{day:%Y-%m-%d} {day:%A}{label}")
+        lines.append(f"{day:%Y-%m-%d} {names}{label}")
     return "\n".join(lines)
 
 
@@ -261,4 +283,29 @@ def build_review_messages(
     messages[1]["content"] += (
         f"\n\n{REVIEW_INSTRUCTIONS}\nExtracted event:\n{json.dumps(event, ensure_ascii=False)}"
     )
+    return messages
+
+
+# --- Screenshots (processed on the desktop with a vision model) ----------------
+
+# A screenshot may show no appointment at all, so an empty list is allowed here.
+IMAGE_EXTRACTION_SCHEMA: dict = json.loads(json.dumps(EXTRACTION_SCHEMA))
+IMAGE_EXTRACTION_SCHEMA["properties"]["events"]["minItems"] = 0
+
+
+def build_image_messages(
+    image_png: bytes, reference: datetime, timezone: str, note: str | None = None
+) -> list[dict]:
+    """Messages for extracting events from a screenshot (OpenAI-style image part)."""
+    import base64
+
+    text = "The appointment details are in the attached screenshot."
+    if note:
+        text += f"\nMy note about it: {note}"
+    messages = build_messages(text, reference, timezone, "screenshot")
+    messages[1]["content"] = [
+        {"type": "text", "text": messages[1]["content"]
+         + "\nIf the screenshot contains no appointment, return {\"events\": []}."},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(image_png).decode()}},
+    ]
     return messages

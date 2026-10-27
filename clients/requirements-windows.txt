@@ -1,3 +1,5 @@
 # For clients/calsend_tray.py on Windows (Python 3.10+ from python.org, with tkinter).
 pystray==0.19.5
 pillow==11.3.0
+# Time zone data (Windows has no system database for zoneinfo).
+tzdata==2026.5

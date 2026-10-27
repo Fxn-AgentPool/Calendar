@@ -75,11 +75,17 @@ def test_prompt_contains_reference_date_and_text():
 
 
 def test_day_table_lists_weekdays_around_today():
-    table = day_table(REF).splitlines()
+    table = day_table(REF, languages=[]).splitlines()
     assert table[0] == "2026-10-22 Thursday (yesterday)"
     assert table[1] == "2026-10-23 Friday (today)"
     assert table[2] == "2026-10-24 Saturday (tomorrow)"
     assert table[-1] == "2026-11-12 Thursday"
+
+
+def test_day_table_adds_other_languages(monkeypatch):
+    assert day_table(REF, languages=["de"]).splitlines()[1] == "2026-10-23 Friday / Freitag (today)"
+    monkeypatch.setenv("DAY_TABLE_LANGUAGES", "de, fr, xx")
+    assert day_table(REF).splitlines()[1] == "2026-10-23 Friday / Freitag / vendredi (today)"
 
 
 @pytest.mark.parametrize("response, code", [

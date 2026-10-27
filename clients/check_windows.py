@@ -47,7 +47,7 @@ print("autostart: ok")
 
 # Keyboard hook for the hotkey: installed and removed again.
 errors = []
-thread = t.HotkeyThread("win+c", lambda: None, errors.append)
+thread = t.HotkeyThread({"win+c": lambda: None, "win+shift+c": lambda: None}, errors.append)
 thread.start()
 thread.ready.wait(5)
 time.sleep(0.5)

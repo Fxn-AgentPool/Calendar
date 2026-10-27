@@ -312,6 +312,25 @@ The extraction model is usually right (13 of 14 events on the test set), but a w
 
 - This is the only place the ingest service changes an existing event: only events it created itself, only while they are still marked uncertain and unchanged, and only with `If-Match` on the ETag it just read (so a concurrent edit wins).
 
+### 8.3a Desktop processing (tray app)
+
+The Windows tray app can run a bigger vision model (Qwen3-VL 8B on an RTX-class GPU,
+llama.cpp CUDA build, started and killed by the app) and process text and screenshots
+itself. Decision tree, re-evaluated every second:
+
+1. GPU busy (another compute process per `nvidia-smi`, sustained load above a threshold
+   while idle, or too little free VRAM): stop the local model, send queued *text* to
+   `POST /ingest` as usual, keep screenshots queued.
+2. GPU free and the queue not empty: extract locally, send the events to `POST /events`.
+3. GPU free, queue empty, compute offered: work through the review queue (§8.3).
+4. A guard thread watches while the model works and kills it the moment the GPU is
+   wanted; the item stays queued.
+
+`POST /events` (ingest key) takes 1–10 events in the extraction schema plus `received_at`,
+`text` (what they came from) and `extracted_by`; the server validates, de-duplicates,
+conflict-checks and writes them, without running its own model or the confidence check. Code:
+`clients/localgpu.py` (tested in `app/tests/test_localgpu.py`).
+
 ### 8.4 Agenda view
 
 - Uncertain events show a `?` badge; the detail page shows the confidence and whether the event was checked or corrected.

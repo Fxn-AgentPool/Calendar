@@ -141,6 +141,45 @@ letter, digit, `F1`–`F24` or `space`, joined with `+`.
 Copying the selection works in apps that copy with Ctrl+C (browsers, Office, Outlook,
 WhatsApp Desktop, most others).
 
+### Local GPU processing (optional)
+
+With an NVIDIA GPU, the tray app can do the extraction itself with a bigger vision model
+(Qwen3-VL 8B), and read **screenshots**. It only uses the GPU while nothing else does.
+
+**Set up once** (downloads llama.cpp's CUDA build and the model, ~10 GB, into
+`%LOCALAPPDATA%\CalendarSend`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File clients\setup_local_gpu.ps1
+```
+
+Then *Settings → Local GPU → Process on this PC's GPU*. The paths are filled in by
+themselves.
+
+**What happens**
+
+| You do | GPU free | GPU busy |
+|--------|----------|----------|
+| Win+C on text | processed on this PC, the events go to the server | sent to the server as before |
+| **Win+Shift+C**: snip a screenshot, note, ✓ | processed on this PC | queued; processed when the GPU is free |
+| nothing (queue empty), *Offer compute* on | re-checks the server's uncertain events | – |
+
+- **Busy** means another program computes on the GPU (e.g. Blender rendering with
+  CUDA/OptiX, other AI tools), or the GPU load stays above the threshold (default 30 %)
+  while the app is idle (games, viewport work), or there isn't enough free VRAM (~11 GB) to load the model.
+- **The moment the GPU is wanted elsewhere**, the app kills its model server, which frees
+  all its VRAM at once. An interrupted item stays queued and is redone later. After two
+  idle minutes the model is unloaded as well.
+- The queue is kept on disk (`%APPDATA%\CalendarSend\queue`) and survives restarts. The
+  tray menu shows how many items wait and what the app is doing.
+- Results go to the server's `POST /events`, which checks them for duplicates and
+  conflicts and writes them, without running the server's own model. Each event notes which model
+  extracted it.
+- *Offer compute* needs the helper key (`scripts/new_api_key.sh helper` on the server).
+
+The extraction uses the same prompt as the server (`app/calapp/ingest/llm.py`), plus a
+screenshot variant that allows "no appointment here".
+
 ## Linux desktop: `clients/calsend_gui.py` (temporary)
 
 A bare window: paste text, optionally pick a source, press **Send** or Ctrl+Enter; the
