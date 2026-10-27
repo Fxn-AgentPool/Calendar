@@ -105,7 +105,6 @@ def save_settings(settings: dict) -> None:
 # --- Hotkey --------------------------------------------------------------------
 
 MODIFIERS = {"alt": 0x1, "ctrl": 0x2, "control": 0x2, "shift": 0x4, "win": 0x8}
-MOD_NOREPEAT = 0x4000
 
 
 def parse_hotkey(text: str) -> tuple[int, int]:
@@ -129,10 +128,21 @@ def parse_hotkey(text: str) -> tuple[int, int]:
 
 
 class HotkeyThread(threading.Thread):
-    """Registers a global hotkey and calls on_hotkey() when it is pressed."""
+    """Catches the hotkey with a low-level keyboard hook and calls on_hotkey().
 
-    WM_HOTKEY = 0x0312
+    A hook sees keys before Windows' own shortcut handling, so this also works
+    for combinations Windows has taken (Win+C opens Copilot or Search on
+    Windows 11): the key is swallowed and never reaches Windows.
+    """
+
     WM_QUIT = 0x0012
+    WH_KEYBOARD_LL = 13
+    WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP = 0x100, 0x101, 0x104, 0x105
+    LLKHF_INJECTED = 0x10
+    # Left/right modifier keys as the hook reports them -> modifier flag.
+    MODIFIER_KEYS = {0x5B: 0x8, 0x5C: 0x8, 0xA2: 0x2, 0xA3: 0x2, 0xA4: 0x1, 0xA5: 0x1, 0xA0: 0x4, 0xA1: 0x4}
+    # An unassigned key, sent while Win is held so releasing Win doesn't open Start.
+    VK_MASK = 0xE8
 
     def __init__(self, hotkey: str, on_hotkey, on_error):
         super().__init__(daemon=True)
@@ -141,27 +151,72 @@ class HotkeyThread(threading.Thread):
         self.on_hotkey, self.on_error = on_hotkey, on_error
         self.thread_id = None
         self.ready = threading.Event()
+        self._swallowing = False  # our key is down: swallow its repeats and release
+        self._proc = None  # keep the callback alive
+
+    def _modifiers(self) -> int:
+        """Modifiers held right now (asked from Windows, so it can't go stale)."""
+        flags = 0
+        for vk, flag in self.MODIFIER_KEYS.items():
+            if user32.GetAsyncKeyState(vk) & 0x8000:
+                flags |= flag
+        return flags
+
+    def _handle(self, n_code, w_param, l_param):
+        if n_code == 0:
+            info = ctypes.cast(l_param, ctypes.POINTER(_KbdHook)).contents
+            # Our own injected keys (Ctrl+C, the mask key) pass through untouched.
+            if not info.flags & self.LLKHF_INJECTED:
+                down = w_param in (self.WM_KEYDOWN, self.WM_SYSKEYDOWN)
+                if info.vkCode == self.vk:
+                    if down and (self._swallowing or self._modifiers() == self.mods):
+                        if not self._swallowing:
+                            self._swallowing = True
+                            if self.mods & 0x8:
+                                user32.keybd_event(self.VK_MASK, 0, 0, 0)
+                                user32.keybd_event(self.VK_MASK, 0, KEYEVENTF_KEYUP, 0)
+                            # Work happens elsewhere: the hook must return fast.
+                            threading.Thread(target=self.on_hotkey, daemon=True).start()
+                        return 1
+                    if not down and self._swallowing:
+                        self._swallowing = False
+                        return 1
+        return user32.CallNextHookEx(None, n_code, w_param, l_param)
 
     def run(self) -> None:
         self.thread_id = kernel32.GetCurrentThreadId()
-        ok = user32.RegisterHotKey(None, 1, self.mods | MOD_NOREPEAT, self.vk)
+        self._proc = _HookProc(self._handle)
+        hook = user32.SetWindowsHookExW(self.WH_KEYBOARD_LL, self._proc, kernel32.GetModuleHandleW(None), 0)
         self.ready.set()
-        if not ok:
-            self.on_error(f"{self.hotkey} is already used by Windows or another app. "
-                          "Pick another hotkey in Settings.")
+        if not hook:
+            self.on_error(f"Could not watch the keyboard for {self.hotkey} "
+                          f"(error {ctypes.get_last_error()}).")
             return
         msg = wintypes.MSG()
         try:
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-                if msg.message == self.WM_HOTKEY:
-                    self.on_hotkey()
+                pass
         finally:
-            user32.UnregisterHotKey(None, 1)
+            user32.UnhookWindowsHookEx(hook)
 
     def stop(self) -> None:
         self.ready.wait(2)
         if self.thread_id:
             user32.PostThreadMessageW(self.thread_id, self.WM_QUIT, 0, 0)
+
+
+if IS_WINDOWS:
+    class _KbdHook(ctypes.Structure):
+        _fields_ = [("vkCode", wintypes.DWORD), ("scanCode", wintypes.DWORD), ("flags", wintypes.DWORD),
+                    ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.c_size_t)]
+
+    _HookProc = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+    user32.SetWindowsHookExW.argtypes = [ctypes.c_int, _HookProc, ctypes.c_void_p, wintypes.DWORD]
+    user32.SetWindowsHookExW.restype = ctypes.c_void_p
+    user32.CallNextHookEx.argtypes = [ctypes.c_void_p, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
+    user32.CallNextHookEx.restype = ctypes.c_ssize_t
+    user32.UnhookWindowsHookEx.argtypes = [ctypes.c_void_p]
+    kernel32.GetModuleHandleW.restype = ctypes.c_void_p
 
 
 # --- Selection (Windows) ---------------------------------------------------------

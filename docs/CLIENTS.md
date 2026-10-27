@@ -129,9 +129,13 @@ autostart entry, hotkey registration) without touching your real settings.
 Start it once, fill in the settings (the window opens by itself on first start), press
 *Test connection*, and tick *Start with Windows*.
 
-**Win+C taken?** On some Windows 11 versions Win+C opens Copilot, and Windows won't hand it
-to another app. You then get a "Hotkey not available" notification; pick another one in
-Settings, e.g. `ctrl+alt+c`. Format: modifiers (`win`, `ctrl`, `alt`, `shift`) plus a
+**Win+C works even though Windows uses it** (Copilot or Search on Windows 11): the app
+watches the keyboard with a low-level hook, like AutoHotkey, and catches its hotkey before
+Windows does. The key is swallowed, and releasing Win does not open the Start menu. Only
+the exact combination is taken (Win+C, not Win+Shift+C), and only while the app runs. No
+registry changes are needed; if you set `DisabledHotkeys` earlier, you can remove it again
+(`reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v DisabledHotkeys /f`).
+Other hotkeys can be set in Settings: modifiers (`win`, `ctrl`, `alt`, `shift`) plus a
 letter, digit, `F1`–`F24` or `space`, joined with `+`.
 
 Copying the selection works in apps that copy with Ctrl+C (browsers, Office, Outlook,

@@ -45,12 +45,14 @@ if not was_on:
     t.set_autostart(False)
 print("autostart: ok")
 
-# Hotkey registration with an unusual combination (refusal is reported, not fatal).
+# Keyboard hook for the hotkey: installed and removed again.
 errors = []
-thread = t.HotkeyThread("ctrl+alt+shift+f12", lambda: None, errors.append)
+thread = t.HotkeyThread("win+c", lambda: None, errors.append)
 thread.start()
 thread.ready.wait(5)
 time.sleep(0.5)
 thread.stop()
-print("hotkey:", "refused: " + errors[0] if errors else "registered and released")
+thread.join(5)
+assert not errors, errors[0]
+print("keyboard hook: installed and removed")
 print("all checks passed")
