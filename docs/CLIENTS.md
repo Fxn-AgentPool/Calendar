@@ -97,6 +97,43 @@ It waits for the result (and keeps polling if needed) and prints the summary. Ex
 `0` everything added or already there, `2` some events not added (conflict or skipped),
 `1` failed, `3` usage/configuration error (e.g. wrong key).
 
+## Windows: tray app with a hotkey (`clients/calsend_tray.py`)
+
+Runs in the background with a tray icon. **Select text anywhere and press Win+C**: a small
+window opens next to the mouse with the selection and a note field. **✓ / Enter** sends
+(Shift+Enter for a new line in the note), **✗ / Esc** cancels. With nothing selected you
+can type the appointment directly. The result appears as a Windows notification
+("Added: Dentist, Tue 01 Dec 14:00–14:45"). Your clipboard is left as it was.
+
+The note goes first, then the selection, so it can say which part is meant ("only the
+second date", "this is for next year").
+
+**Tray menu:** *New entry* (also a left click), *Settings…*, *Quit*. Settings: server URL,
+API key, hotkey, default source, *Start with Windows*, and *Test connection*. They are kept
+in `%APPDATA%\CalendarSend\settings.json`; the API key is encrypted for your Windows user.
+
+**Install** (Python 3.10+ from python.org, which includes tkinter):
+
+```powershell
+# option 1: run directly
+pip install -r clients\requirements-windows.txt
+pythonw clients\calsend_tray.py
+
+# option 2: build a single CalendarSend.exe (in dist\)
+powershell -ExecutionPolicy Bypass -File clients\build_windows.ps1
+```
+
+Start it once, fill in the settings (the window opens by itself on first start), press
+*Test connection*, and tick *Start with Windows*.
+
+**Win+C taken?** On some Windows 11 versions Win+C opens Copilot, and Windows won't hand it
+to another app. You then get a "Hotkey not available" notification; pick another one in
+Settings, e.g. `ctrl+alt+c`. Format: modifiers (`win`, `ctrl`, `alt`, `shift`) plus a
+letter, digit, `F1`–`F24` or `space`, joined with `+`.
+
+Copying the selection works in apps that copy with Ctrl+C (browsers, Office, Outlook,
+WhatsApp Desktop, most others).
+
 ## Linux desktop: `clients/calsend_gui.py` (temporary)
 
 A bare window: paste text, optionally pick a source, press **Send** or Ctrl+Enter; the
