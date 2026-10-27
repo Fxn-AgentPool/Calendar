@@ -99,10 +99,10 @@ It waits for the result (and keeps polling if needed) and prints the summary. Ex
 
 ## Windows: tray app with a hotkey (`clients/calsend_tray.py`)
 
-Runs in the background with a tray icon. **Select text anywhere and press Win+C**: a small
-window opens next to the mouse with the selection and a note field. **✓ / Enter** sends
-(Shift+Enter for a new line in the note), **✗ / Esc** cancels. With nothing selected you
-can type the appointment directly. The result appears as a Windows notification
+Runs in the background with a tray icon. **Select text anywhere and press Win+C**: a slim
+bar opens near the mouse with a *Notes* field and ✗ / ✓. Type a note if you like, then
+**✓ / Enter** sends the selection plus the note, **✗ / Esc** cancels. With nothing selected,
+type the appointment into the bar. The result appears as a Windows notification
 ("Added: Dentist, Tue 01 Dec 14:00–14:45"). Your clipboard is left as it was.
 
 The note goes first, then the selection, so it can say which part is meant ("only the

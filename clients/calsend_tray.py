@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Calendar quick-add for Windows: a tray app with a global hotkey.
 
-Select text anywhere and press the hotkey (default Win+C): a small window
-pops up with the selection and a notes field. ✓ (Enter) sends both to the
+Select text anywhere and press the hotkey (default Win+C): a slim bar pops
+up with a notes field. ✓ (Enter) sends the selection and the note to the
 ingest API, ✗ (Esc) cancels. The result shows as a notification. Settings
 (server, API key, hotkey, start with Windows) are in the tray icon's menu.
 
@@ -25,7 +25,7 @@ import threading
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import scrolledtext, ttk
+from tkinter import ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import calsend  # noqa: E402
@@ -440,7 +440,10 @@ class App:
             self.icon.stop()
         self.root.destroy()
 
-    # -- popup: selection + note, ✓ / ✗
+    # -- popup: one bar with a note field, ✗ and ✓
+    POPUP = {"frame": "#1c2430", "field": "#46555c", "text": "#e6e8eb", "hint": "#a9b1b8",
+             "no": "#d9604f", "yes": "#8cc47a", "mark": "#1c2430"}
+
     def open_popup(self, selection: str) -> None:
         if not self.settings["url"] or not self.settings["key"]:
             self.notify("Set the server and API key first.", "Not configured")
@@ -448,61 +451,58 @@ class App:
             return
         if self.popup_window is not None:
             self.popup_window.destroy()
-        win = self.popup_window = tk.Toplevel(self.root)
-        win.title("Add to calendar")
+        c = self.POPUP
+        win = self.popup_window = tk.Toplevel(self.root, bg=c["frame"], padx=6, pady=6)
+        win.overrideredirect(True)  # no title bar
         win.attributes("-topmost", True)
-        win.resizable(False, False)
-        frame = ttk.Frame(win, padding=8)
-        frame.pack(fill="both", expand=True)
 
-        if selection.strip():
-            ttk.Label(frame, text="Selected text").pack(anchor="w")
-            shown = scrolledtext.ScrolledText(frame, width=48, height=5, wrap="word")
-            shown.insert("1.0", selection.strip())
-            shown.configure(state="disabled")
-            shown.pack(fill="x", pady=(0, 6))
-            ttk.Label(frame, text="Note (optional)").pack(anchor="w")
-        else:
-            ttk.Label(frame, text="Nothing selected: type the appointment").pack(anchor="w")
-        note = tk.Text(frame, width=48, height=3, wrap="word")
-        note.pack(fill="x")
+        hint = "Notes" if selection.strip() else "Appointment"
+        note = tk.Entry(win, width=24, font=("Segoe UI", 20), bg=c["field"], fg=c["hint"],
+                        insertbackground=c["text"], relief="flat", highlightthickness=0)
+        note.insert(0, hint)
+        note.grid(row=0, column=0, sticky="nsew", ipady=6, padx=(0, 6))
 
-        buttons = ttk.Frame(frame)
-        buttons.pack(fill="x", pady=(6, 0))
-        source = ttk.Combobox(buttons, values=SOURCES, width=10, state="readonly")
-        source.set(self.settings.get("source", ""))
-        source.pack(side="left")
+        def clear_hint(_event=None):
+            if note.cget("fg") == c["hint"]:
+                note.delete(0, "end")
+                note.configure(fg=c["text"])
+
+        def text_of_note() -> str:
+            return "" if note.cget("fg") == c["hint"] else note.get()
 
         def send(_event=None):
-            text = compose(selection, note.get("1.0", "end"))
+            text = compose(selection, text_of_note())
             if not text:
                 return "break"
-            hint = source.get() or None  # read before the window (and its widgets) is gone
             self.close_popup()
-            threading.Thread(target=self._send, args=(text, hint), daemon=True).start()
+            threading.Thread(target=self._send, args=(text, self.settings.get("source") or None),
+                             daemon=True).start()
             return "break"
 
-        def newline(_event=None):
-            note.insert("insert", "\n")
-            return "break"
+        def button(column, label, color, command):
+            b = tk.Label(win, text=label, font=("Segoe UI", 20, "bold"), width=3, bg=color, fg=c["mark"],
+                         cursor="hand2")
+            b.grid(row=0, column=column, sticky="ns", padx=(0, 6) if column == 1 else 0)
+            b.bind("<Button-1>", lambda _e: command())
 
-        tk.Button(buttons, text="✗", width=4, command=self.close_popup).pack(side="right")
-        tk.Button(buttons, text="✓", width=4, command=send).pack(side="right", padx=4)
+        button(1, "✗", c["no"], self.close_popup)
+        button(2, "✓", c["yes"], send)
+        note.bind("<Key>", lambda e: None if e.keysym in ("Return", "Escape", "Tab") else clear_hint(), add="+")
+        note.bind("<Button-1>", clear_hint, add="+")
         note.bind("<Return>", send)
-        note.bind("<Shift-Return>", newline)
         win.bind("<Escape>", lambda _e: self.close_popup())
-        win.protocol("WM_DELETE_WINDOW", self.close_popup)
 
         win.update_idletasks()
         x, y = self.root.winfo_pointerxy()
         w, h = win.winfo_reqwidth(), win.winfo_reqheight()
-        x = max(0, min(x + 12, win.winfo_screenwidth() - w - 8))
-        y = max(0, min(y + 12, win.winfo_screenheight() - h - 48))
+        x = max(0, min(x - w // 2, win.winfo_screenwidth() - w - 8))
+        y = max(0, min(y + 16, win.winfo_screenheight() - h - 48))
         win.geometry(f"+{x}+{y}")
         win.deiconify()
         win.lift()
         win.focus_force()
         note.focus_set()
+        note.icursor(0)
 
     def close_popup(self) -> None:
         if self.popup_window is not None:
