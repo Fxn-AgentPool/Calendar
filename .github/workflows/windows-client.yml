@@ -1,10 +1,8 @@
 name: Windows client
 
+# Manual only (Actions tab -> Windows client -> Run workflow). Locally the same
+# build is clients\build_windows.ps1, the same checks clients\check_windows.py.
 on:
-  push:
-    paths:
-      - "clients/**"
-      - ".github/workflows/windows-client.yml"
   workflow_dispatch:
 
 jobs:

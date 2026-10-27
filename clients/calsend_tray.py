@@ -258,7 +258,8 @@ def launch_command() -> str:
 def set_autostart(enabled: bool) -> None:
     if not IS_WINDOWS:
         return
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+    # CreateKeyEx also opens it; the Run key is missing on some fresh profiles.
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
         if enabled:
             winreg.SetValueEx(key, APP, 0, winreg.REG_SZ, launch_command())
         else:

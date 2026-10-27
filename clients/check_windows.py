@@ -32,12 +32,12 @@ assert t.get_clipboard_text() == "hello calendar"
 print("clipboard: ok")
 
 # Autostart registry entry (added and removed again, unless it was already on).
-with winreg.OpenKey(winreg.HKEY_CURRENT_USER, t.RUN_KEY) as key:
-    try:
+try:
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, t.RUN_KEY) as key:
         winreg.QueryValueEx(key, t.APP)
-        was_on = True
-    except FileNotFoundError:
-        was_on = False
+    was_on = True
+except FileNotFoundError:  # no Run key, or no entry for us
+    was_on = False
 t.set_autostart(True)
 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, t.RUN_KEY) as key:
     print("autostart command:", winreg.QueryValueEx(key, t.APP)[0])

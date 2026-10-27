@@ -123,6 +123,9 @@ pythonw clients\calsend_tray.py
 powershell -ExecutionPolicy Bypass -File clients\build_windows.ps1
 ```
 
+`python clients\check_windows.py` checks the Windows-only parts (key encryption, clipboard,
+autostart entry, hotkey registration) without touching your real settings.
+
 Start it once, fill in the settings (the window opens by itself on first start), press
 *Test connection*, and tick *Start with Windows*.
 
