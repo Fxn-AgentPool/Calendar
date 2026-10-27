@@ -1,0 +1,43 @@
+name: Windows client
+
+on:
+  push:
+    paths:
+      - "clients/**"
+      - ".github/workflows/windows-client.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build CalendarSend.exe
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File clients\build_windows.ps1
+
+      - name: Test the Windows-only parts
+        shell: pwsh
+        run: .\.venv-win\Scripts\python clients\check_windows.py
+
+      - name: Check the exe starts
+        shell: pwsh
+        env:
+          APPDATA: ${{ runner.temp }}\appdata-exe
+        run: |
+          $p = Start-Process dist\CalendarSend.exe -PassThru
+          Start-Sleep -Seconds 8
+          if ($p.HasExited) { throw "CalendarSend.exe exited early (code $($p.ExitCode))" }
+          Stop-Process -Id $p.Id
+          "exe ran for 8 s: ok"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CalendarSend
+          path: dist/CalendarSend.exe
+          if-no-files-found: error
