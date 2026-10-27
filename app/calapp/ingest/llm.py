@@ -116,9 +116,10 @@ _TABLE_BEFORE = 1
 _TABLE_AFTER = 20
 
 
-# Weekday names added to the day table, so the model doesn't have to translate
-# "Donnerstag" to Thursday before looking it up. Languages come from the
-# DAY_TABLE_LANGUAGES environment variable (comma-separated, default "de").
+# Optional weekday names in other languages for the day table, from the
+# DAY_TABLE_LANGUAGES environment variable (comma-separated, e.g. "de"). Off by
+# default: with German names added, Qwen3 4B got 11/14 instead of 13/14 on the
+# benchmark and put "Donnerstag" on a Wednesday (docs/DESIGN.md §8.5).
 WEEKDAY_NAMES = {
     "de": ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
     "fr": ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"],
@@ -132,7 +133,7 @@ _ENGLISH = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", 
 def table_languages() -> list[str]:
     import os
 
-    wanted = os.environ.get("DAY_TABLE_LANGUAGES", "de")
+    wanted = os.environ.get("DAY_TABLE_LANGUAGES", "")
     return [lang.strip() for lang in wanted.split(",") if lang.strip() in WEEKDAY_NAMES]
 
 

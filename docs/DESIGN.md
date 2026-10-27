@@ -345,6 +345,10 @@ conflict-checks and writes them, without running its own model or the confidence
 | Kev-4B | checker | picked the right option 14/14; AUROC 0.97–0.98 for correct vs. near-miss | – | – | ~8 | ~3 GB |
 | Kev-0.8B | checker | 11/14; confidence carried no signal | – | – | ~2.5 | ~1 GB |
 
+Weekday names in a second language in the day table (`DAY_TABLE_LANGUAGES=de`) made Qwen3 4B
+worse, 11/14 instead of 13/14: with them it put "Donnerstag" on a Wednesday. So the table
+stays English-only by default.
+
 The prompt was tuned while testing Qwen3 4B, which favours it somewhat; the gaps are too large to be explained by that alone. Kev is officially English-only; the German samples worked in this test.
 
 ## 9. Security model
